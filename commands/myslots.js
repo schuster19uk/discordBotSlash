@@ -25,7 +25,7 @@ module.exports = {
                 return await interaction.editReply("📝 You don't have any upcoming bookings.");
             }
 
-            let dashboard = "## 🗓️ Your Booking Dashboard\n*Select a button below to cancel an appointment.*\n\n";
+            let dashboard = "## 🗓️ Your Booked Lessons \n*Select a button below to cancel an appointment.*\n\n";
             const actionRows = [];
             let currentRow = new ActionRowBuilder();
 
