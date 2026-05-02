@@ -1,13 +1,18 @@
-// const { SlashCommandBuilder } = require('discord.js');
+
+// const { 
+//     SlashCommandBuilder, 
+//     ActionRowBuilder, 
+//     ButtonBuilder, 
+//     ButtonStyle 
+// } = require('discord.js');
 // const { DateTime } = require('luxon');
 // const pool = require('../database/pool');
 
 // module.exports = {
 //     data: new SlashCommandBuilder()
 //         .setName('availability')
-//         .setDescription('Show available booking slots'),
+//         .setDescription('Show 20 available booking slots'),
 //     async execute(interaction) {
-//         // We defer because DB queries can take longer than the 3-second interaction window
 //         await interaction.deferReply();
 
 //         let conn;
@@ -24,44 +29,46 @@
 //                 return await interaction.editReply("📅 No slots found.");
 //             }
 
-//             let list = "━━━━━━━━━━━━━━━━━━━━━━━━\n**APPOINTMENTS AVAILABLE**\n*(All times localized to your device)*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+//             let list = "━━━━━━━━━━━━━━━━━━━━━━━━\n**SELECT A SLOT TO BOOK**\n━━━━━━━━━━━━━━━━━━━━━━━━\n";
+//             const actionRows = [];
+//             let currentRow = new ActionRowBuilder();
 
-//             rows.forEach(row => {
-//                 let start;
-//                 // Handle both SQL strings and JS Date objects
-//                 if (row.start_time instanceof Date) {
-//                     start = DateTime.fromJSDate(row.start_time, { zone: 'utc' });
-//                 } else {
-//                     start = DateTime.fromSQL(row.start_time, { zone: 'utc' });
-//                 }
+//             rows.forEach((row, index) => {
+//                 const start = row.start_time instanceof Date 
+//                     ? DateTime.fromJSDate(row.start_time, { zone: 'utc' }) 
+//                     : DateTime.fromSQL(row.start_time, { zone: 'utc' });
 
-//                 if (!start.isValid) return;
 //                 const sUnix = Math.floor(start.toSeconds());
+//                 list += `**${index + 1}.** <t:${sUnix}:F>\n`;
 
-//                 list += `📅 <t:${sUnix}:F> \n` +
-//                         `🔹 \`/book slot:${row.slot_id}\` \n` + // Updated to suggest slash command syntax
-//                         `──────────────────\n`;
+//                 // Add button to the current row
+//                 currentRow.addComponents(
+//                     new ButtonBuilder()
+//                         .setCustomId(`book_slot_${row.slot_id}`)
+//                         .setLabel(`${index + 1}`) // Short label so buttons stay small
+//                         .setStyle(ButtonStyle.Secondary)
+//                 );
+
+//                 // Every 5 buttons, push the row and start a new one
+//                 if ((index + 1) % 5 === 0 || index === rows.length - 1) {
+//                     actionRows.push(currentRow);
+//                     currentRow = new ActionRowBuilder();
+//                 }
 //             });
 
-//             if (list.length > 2000) {
-//                 return await interaction.editReply("❌ List is too long to display. Please contact an admin to reduce the query limit.");
-//             }
+//             await interaction.editReply({
+//                 content: list,
+//                 components: actionRows
+//             });
 
-//             await interaction.editReply(list);
 //         } catch (err) {
-//             console.error("Database Error:", err);
-//             // Check if we already deferred/replied to avoid "Interaction already replied" errors
-//             if (interaction.deferred) {
-//                 await interaction.editReply("❌ Error loading availability.");
-//             } else {
-//                 await interaction.reply({ content: "❌ Error loading availability.", ephemeral: true });
-//             }
+//             console.error(err);
+//             await interaction.editReply("❌ Error loading availability.");
 //         } finally {
 //             if (conn) conn.release();
 //         }
 //     }
 // };
-
 
 const { 
     SlashCommandBuilder, 
@@ -90,7 +97,7 @@ module.exports = {
             );
 
             if (!rows || rows.length === 0) {
-                return await interaction.editReply("📅 No slots found.");
+                return await interaction.editReply("📅 No available slots found for the next 24+ hours.");
             }
 
             let list = "━━━━━━━━━━━━━━━━━━━━━━━━\n**SELECT A SLOT TO BOOK**\n━━━━━━━━━━━━━━━━━━━━━━━━\n";
@@ -105,18 +112,19 @@ module.exports = {
                 const sUnix = Math.floor(start.toSeconds());
                 list += `**${index + 1}.** <t:${sUnix}:F>\n`;
 
-                // Add button to the current row
                 currentRow.addComponents(
                     new ButtonBuilder()
                         .setCustomId(`book_slot_${row.slot_id}`)
-                        .setLabel(`${index + 1}`) // Short label so buttons stay small
-                        .setStyle(ButtonStyle.Secondary)
+                        .setLabel(`${index + 1}`) 
+                        .setStyle(ButtonStyle.Primary) // Changed to Primary (Blue) for better visibility
                 );
 
-                // Every 5 buttons, push the row and start a new one
+                // Push row every 5 buttons OR if it's the last item
                 if ((index + 1) % 5 === 0 || index === rows.length - 1) {
-                    actionRows.push(currentRow);
-                    currentRow = new ActionRowBuilder();
+                    if (currentRow.components.length > 0) {
+                        actionRows.push(currentRow);
+                        currentRow = new ActionRowBuilder();
+                    }
                 }
             });
 
@@ -126,8 +134,8 @@ module.exports = {
             });
 
         } catch (err) {
-            console.error(err);
-            await interaction.editReply("❌ Error loading availability.");
+            console.error("Availability Command Error:", err);
+            await interaction.editReply("❌ Error loading availability. Please try again later.");
         } finally {
             if (conn) conn.release();
         }
