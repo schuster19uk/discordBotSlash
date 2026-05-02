@@ -49,28 +49,31 @@ module.exports = {
                 conn = await pool.getConnection();
 
                 if (isBooking) {
-                    // Use RETURNING start_time to get the date without a second SELECT query
+                    // Step 1: Update the row
                     const result = await conn.query(
                         `UPDATE booking_slots 
                          SET booked_by_id = ?, booked_by_name = ?, is_available = FALSE 
-                         WHERE slot_id = ? AND is_available = TRUE
-                         RETURNING start_time`, 
+                         WHERE slot_id = ? AND is_available = TRUE`, 
                         [interaction.user.id, interaction.user.username, slotId]
                     );
 
-                    // result in MariaDB returns an array of objects for RETURNING queries
-                    if (!result || result.length === 0) {
+                    // Step 2: Check if update was successful
+                    if (!result || result.affectedRows == 0) {
                         return await interaction.followUp({
                             content: "⚠️ **Slot Unavailable:** Someone else just booked this.",
                             flags: [MessageFlags.Ephemeral]
                         });
                     }
 
-                    // Convert the returned time to a Discord Unix Timestamp
-                    const bookedTime = result[0].start_time;
-                    const start = bookedTime instanceof Date 
-                        ? DateTime.fromJSDate(bookedTime, { zone: 'utc' }) 
-                        : DateTime.fromSQL(bookedTime, { zone: 'utc' });
+                    // Step 3: Fetch the time for the confirmation message
+                    const rows = await conn.query(
+                        `SELECT start_time FROM booking_slots WHERE slot_id = ?`,
+                        [slotId]
+                    );
+
+                    const start = rows[0].start_time instanceof Date 
+                        ? DateTime.fromJSDate(rows[0].start_time, { zone: 'utc' }) 
+                        : DateTime.fromSQL(rows[0].start_time, { zone: 'utc' });
                     
                     const sUnix = Math.floor(start.toSeconds());
 
