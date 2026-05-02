@@ -1,4 +1,10 @@
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { 
+    SlashCommandBuilder, 
+    ActionRowBuilder, 
+    ButtonBuilder, 
+    ButtonStyle, 
+    MessageFlags 
+} = require('discord.js');
 const pool = require('../database/pool');
 const { DateTime } = require('luxon');
 
@@ -7,7 +13,18 @@ module.exports = {
         .setName('myslots')
         .setDescription('View and manage your upcoming bookings'),
     async execute(interaction) {
-        await interaction.deferReply({ ephemeral: true });
+        // 1. Role Check
+        const REQUIRED_ROLE_ID = process.env.REQUIRED_ROLE_ID;
+        
+        if (REQUIRED_ROLE_ID && !interaction.member.roles.cache.has(REQUIRED_ROLE_ID)) {
+            return await interaction.reply({ 
+                content: "🚫 You do not have the required role to trigger this command.", 
+                flags: [MessageFlags.Ephemeral] 
+            });
+        }
+
+        // 2. Defer as Ephemeral (Private)
+        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
         let conn;
         try {
@@ -46,8 +63,10 @@ module.exports = {
 
                 // Discord limit: 5 buttons per row
                 if ((index + 1) % 5 === 0 || index === rows.length - 1) {
-                    actionRows.push(currentRow);
-                    currentRow = new ActionRowBuilder();
+                    if (currentRow.components.length > 0) {
+                        actionRows.push(currentRow);
+                        currentRow = new ActionRowBuilder();
+                    }
                 }
             });
 
