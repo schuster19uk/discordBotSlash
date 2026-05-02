@@ -29,24 +29,47 @@ module.exports = {
         if (interaction.isButton()) {
             if (interaction.customId.startsWith('book_slot_')) {
                 const slotId = interaction.customId.replace('book_slot_', '');
+                let conn;
 
                 try {
-                    // Always acknowledge the interaction immediately to prevent "Interaction Failed"
-                    // deferUpdate() stops the loading state on the button without sending a new message
+                    // 1. Acknowledge the click immediately
                     await interaction.deferUpdate();
 
-                    // Perform your booking logic here (e.g., updating the database)
-                    // const pool = require('../database/pool');
-                    // await pool.query('UPDATE booking_slots SET is_available = FALSE WHERE slot_id = ?', [slotId]);
+                    conn = await pool.getConnection();
 
+                    // 2. Execute the query using the user's Discord info
+                    const result = await conn.query(
+                        `UPDATE booking_slots 
+                        SET booked_by_id = ?, booked_by_name = ?, is_available = FALSE 
+                        WHERE slot_id = ? AND is_available = TRUE`, 
+                        [interaction.user.id, interaction.user.username, slotId]
+                    );
+
+                    /**
+                     * Note: result.affectedRows works for the 'mysql2' and 'mariadb' packages.
+                     * If the slot was already taken, affectedRows will be 0.
+                     */
+                    if (result.affectedRows === 0) {
+                        return await interaction.followUp({
+                            content: "⚠️ **Booking Failed:** This slot was just taken by someone else or is no longer available.",
+                            ephemeral: true
+                        });
+                    }
+
+                    // 3. Confirm success to the user
                     await interaction.followUp({
-                        content: `✅ Successfully booked slot **#${slotId}**!`,
+                        content: `✅ **Success!** You have booked slot **#${slotId}**.\n📅 Check your DMs for confirmation (if applicable).`,
                         ephemeral: true
                     });
 
                 } catch (error) {
-                    console.error('Button Error:', error);
-                    await interaction.followUp({ content: '❌ Failed to process booking.', ephemeral: true });
+                    console.error('Database Update Error:', error);
+                    await interaction.followUp({ 
+                        content: '❌ **Error:** Could not process booking at this time.', 
+                        ephemeral: true 
+                    });
+                } finally {
+                    if (conn) conn.release();
                 }
             }
         }
