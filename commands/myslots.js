@@ -1,51 +1,64 @@
-const { SlashCommandBuilder } = require('discord.js');
-const { DateTime } = require('luxon');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const pool = require('../database/pool');
+const { DateTime } = require('luxon');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('myslots')
-        .setDescription('Show your booked slots'),
+        .setDescription('View and manage your upcoming bookings'),
     async execute(interaction) {
-        await interaction.deferReply();
+        await interaction.deferReply({ ephemeral: true });
 
         let conn;
         try {
             conn = await pool.getConnection();
 
-            // 1. Fetch only unexpired/unreminded slots booked by this user
+            // Fetch only future slots booked by this specific user
             const rows = await conn.query(
-                "SELECT slot_id, start_time FROM booking_slots WHERE booked_by_id = ? AND reminder_sent = FALSE ORDER BY start_time ASC",
+                `SELECT slot_id, start_time FROM booking_slots 
+                 WHERE booked_by_id = ? AND start_time > NOW()
+                 ORDER BY start_time ASC LIMIT 5`, 
                 [interaction.user.id]
             );
 
-            if (rows.length === 0) {
-                return interaction.editReply("📋 You don't have any active upcoming bookings at the moment.");
+            if (!rows || rows.length === 0) {
+                return await interaction.editReply("📝 You don't have any upcoming bookings.");
             }
 
-            // 2. Build the display list
-            let list = `**📅 Your Active Bookings:**\n*Times are shown in your local timezone.*\n\n`;
+            let dashboard = "## 🗓️ Your Booking Dashboard\n*Select a button below to cancel an appointment.*\n\n";
+            const actionRows = [];
+            let currentRow = new ActionRowBuilder();
 
-            rows.forEach(row => {
-                /**
-                 * THE FIX:
-                 * Using fromSQL because dateStrings: true is enabled.
-                 * We force UTC zone because the DB stores the time in UTC.
-                 */
-                const start = DateTime.fromSQL(row.start_time, { zone: 'utc' });
-                const unix = Math.floor(start.toSeconds());
+            rows.forEach((row, index) => {
+                const start = row.start_time instanceof Date 
+                    ? DateTime.fromJSDate(row.start_time, { zone: 'utc' }) 
+                    : DateTime.fromSQL(row.start_time, { zone: 'utc' });
 
-                // 3. Format with Discord timestamps
-                // <t:unix:F> is Full Date/Time, <t:unix:R> is Relative (e.g. "in 2 hours")
-                list += `🔹 **Slot #${row.slot_id}**: <t:${unix}:F> (<t:${unix}:R>)\n` +
-                        `   *To cancel: \`/cancel slot: ${row.slot_id}\`*\n\n`;
+                const sUnix = Math.floor(start.toSeconds());
+                dashboard += `**${index + 1}.** <t:${sUnix}:F> (ID: \`#${row.slot_id}\`)\n`;
+
+                currentRow.addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`cancel_slot_${row.slot_id}`)
+                        .setLabel(`Cancel #${index + 1}`)
+                        .setStyle(ButtonStyle.Danger)
+                );
+
+                // Discord limit: 5 buttons per row
+                if ((index + 1) % 5 === 0 || index === rows.length - 1) {
+                    actionRows.push(currentRow);
+                    currentRow = new ActionRowBuilder();
+                }
             });
 
-            interaction.editReply(list);
+            await interaction.editReply({
+                content: dashboard,
+                components: actionRows
+            });
 
         } catch (err) {
-            console.error("Error in myslots command:", err);
-            interaction.editReply("❌ Database error while fetching your bookings.");
+            console.error("Dashboard Error:", err);
+            await interaction.editReply("❌ Error loading your dashboard.");
         } finally {
             if (conn) conn.release();
         }

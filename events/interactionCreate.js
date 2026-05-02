@@ -77,6 +77,28 @@ module.exports = {
                     if (conn) conn.release();
                 }
             }
+
+            // HANDLE CANCELLATION
+            if (interaction.customId.startsWith('cancel_slot_')) {
+                await interaction.deferUpdate();
+                const slotId = interaction.customId.replace('cancel_slot_', '');
+
+                const result = await conn.query(
+                    `UPDATE booking_slots 
+                        SET booked_by_id = NULL, booked_by_name = NULL, is_available = TRUE, reminder_sent = FALSE
+                        WHERE slot_id = ? AND (booked_by_id = ? OR ?)`,
+                    [slotId, interaction.user.id, interaction.member.permissions.has('Administrator')]
+                );
+
+                if (result.affectedRows > 0) {
+                    await interaction.editReply({ 
+                        content: `✅ Successfully cancelled slot **#${slotId}**. Your dashboard has been updated.`, 
+                        components: [] 
+                    });
+                }
+            }
         }
+
+
     },
 };
