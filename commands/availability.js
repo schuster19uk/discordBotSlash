@@ -74,7 +74,8 @@ const {
     SlashCommandBuilder, 
     ActionRowBuilder, 
     ButtonBuilder, 
-    ButtonStyle 
+    ButtonStyle,
+    MessageFlags 
 } = require('discord.js');
 const { DateTime } = require('luxon');
 const pool = require('../database/pool');
@@ -84,6 +85,18 @@ module.exports = {
         .setName('availability')
         .setDescription('Show 20 available booking slots'),
     async execute(interaction) {
+        // 1. Role Check
+        const REQUIRED_ROLE_ID = process.env.REQUIRED_ROLE_ID;
+        
+        // If the role ID is set and the user doesn't have it, stop immediately
+        if (REQUIRED_ROLE_ID && !interaction.member.roles.cache.has(REQUIRED_ROLE_ID)) {
+            return await interaction.reply({ 
+                content: "🚫 You do not have the required role to trigger this command.", 
+                flags: [MessageFlags.Ephemeral] 
+            });
+        }
+
+        // 2. Proceed with the command if they have the role
         await interaction.deferReply();
 
         let conn;
@@ -116,10 +129,9 @@ module.exports = {
                     new ButtonBuilder()
                         .setCustomId(`book_slot_${row.slot_id}`)
                         .setLabel(`${index + 1}`) 
-                        .setStyle(ButtonStyle.Primary) // Changed to Primary (Blue) for better visibility
+                        .setStyle(ButtonStyle.Primary)
                 );
 
-                // Push row every 5 buttons OR if it's the last item
                 if ((index + 1) % 5 === 0 || index === rows.length - 1) {
                     if (currentRow.components.length > 0) {
                         actionRows.push(currentRow);
