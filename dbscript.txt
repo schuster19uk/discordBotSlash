@@ -1,0 +1,30 @@
+-- Create the database
+CREATE DATABASE booking_system;
+
+-- Create a specific user for your bot (Safer than using root)
+CREATE USER 'bot_user'@'localhost' IDENTIFIED BY 'your_strong_password';
+GRANT ALL PRIVILEGES ON booking_system.* TO 'bot_user'@'localhost';
+FLUSH PRIVILEGES;
+
+-- Switch to the database
+USE booking_system;
+
+CREATE TABLE booking_slots (
+    slot_id INT AUTO_INCREMENT PRIMARY KEY,
+    start_time DATETIME NOT NULL,
+    end_time DATETIME NOT NULL,
+    booked_by_id VARCHAR(255) DEFAULT NULL,
+    booked_by_name VARCHAR(255) DEFAULT NULL,
+    is_available BOOLEAN DEFAULT TRUE,
+    reminder_sent BOOLEAN DEFAULT FALSE,
+    uk_time_display VARCHAR(100)
+    nevada_time_display VARCHAR(100)
+);
+
+ALTER TABLE booking_slots ADD UNIQUE (start_time);
+
+-- Example Insert:
+INSERT INTO booking_slots (start_time, end_time) 
+VALUES ('2026-05-01 14:00:00', '2026-05-01 15:00:00');
+
+

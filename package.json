@@ -1,0 +1,29 @@
+{
+  "name": "discordbot",
+  "version": "1.0.0",
+  "description": "discord bot for booking portal",
+  "keywords": [
+    "twitch",
+    "discord",
+    "bot"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "schuster19uk"
+  },
+  "license": "ISC",
+  "author": "schuster",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@discordjs/builders": "^1.14.1",
+    "@discordjs/rest": "^2.6.1",
+    "discord.js": "^14.26.3",
+    "dotenv": "^17.4.2",
+    "luxon": "^3.7.2",
+    "mariadb": "^3.5.2"
+  }
+}
