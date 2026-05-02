@@ -1,4 +1,5 @@
 const pool = require('../database/pool');
+const { MessageFlags } = require('discord.js');
 
 module.exports = {
     name: 'interactionCreate',
@@ -7,7 +8,10 @@ module.exports = {
         if (interaction.isChatInputCommand()) {
             const COMMAND_CHANNEL_ID = process.env.COMMAND_CHANNEL_ID;
             if (COMMAND_CHANNEL_ID && COMMAND_CHANNEL_ID !== '0' && interaction.channelId !== COMMAND_CHANNEL_ID) {
-                return interaction.reply({ content: '❌ You cannot use commands in this channel.', ephemeral: true });
+                return interaction.reply({ 
+                    content: '❌ You cannot use commands in this channel.', 
+                    flags: [MessageFlags.Ephemeral] 
+                });
             }
 
             const command = client.commands.get(interaction.commandName);
@@ -17,32 +21,36 @@ module.exports = {
                 await command.execute(interaction);
             } catch (error) {
                 console.error(`Error in ${interaction.commandName}:`, error);
+                const errPayload = { content: '❌ Error executing command.', flags: [MessageFlags.Ephemeral] };
                 if (!interaction.replied && !interaction.deferred) {
-                    await interaction.reply({ content: '❌ Error executing command.', ephemeral: true });
+                    await interaction.reply(errPayload);
                 } else {
-                    await interaction.followUp({ content: '❌ Error executing command.', ephemeral: true });
+                    await interaction.followUp(errPayload);
                 }
             }
             return;
         }
 
-        // --- 2. HANDLE BUTTON CLICKS (MARIADB OPTIMIZED) ---
+        // --- 2. HANDLE BUTTON CLICKS ---
         if (interaction.isButton()) {
-            if (interaction.customId.startsWith('book_slot_')) {
-                // Extract and convert ID to number if your DB uses INT for slot_id
-                const rawId = interaction.customId.replace('book_slot_', '');
-                const slotId = isNaN(rawId) ? rawId : parseInt(rawId);
+            let conn; 
+
+            try {
+                // Determine Slot ID and Action
+                const isBooking = interaction.customId.startsWith('book_slot_');
+                const isCancelling = interaction.customId.startsWith('cancel_slot_');
                 
-                let conn;
+                if (!isBooking && !isCancelling) return;
 
-                try {
-                    // 1. Stop the "loading" state on the button
-                    await interaction.deferUpdate();
+                const rawId = interaction.customId.replace('book_slot_', '').replace('cancel_slot_', '');
+                const slotId = isNaN(rawId) ? rawId : parseInt(rawId);
 
-                    conn = await pool.getConnection();
+                // Acknowledge immediately
+                await interaction.deferUpdate();
 
-                    // 2. Execute MariaDB Query
-                    // Note: MariaDB driver returns a 'ResultSetHeader' object directly
+                conn = await pool.getConnection();
+
+                if (isBooking) {
                     const result = await conn.query(
                         `UPDATE booking_slots 
                          SET booked_by_id = ?, booked_by_name = ?, is_available = FALSE 
@@ -50,55 +58,50 @@ module.exports = {
                         [interaction.user.id, interaction.user.username, slotId]
                     );
 
-                    // 3. Check affectedRows (MariaDB uses BigInt for this sometimes)
-                    // We check > 0 to be safe
                     if (!result || result.affectedRows == 0) {
                         return await interaction.followUp({
-                            content: "⚠️ **Slot Unavailable:** This appointment was just booked by someone else.",
-                            ephemeral: true
+                            content: "⚠️ **Slot Unavailable:** Someone else just booked this.",
+                            flags: [MessageFlags.Ephemeral]
                         });
                     }
 
-                    // 4. Success!
                     await interaction.followUp({
-                        content: `✅ **Booking Confirmed!**\nSlot: **#${slotId}**\nUser: **${interaction.user.username}**`,
-                        ephemeral: true
+                        content: `✅ **Booking Confirmed!** Slot: **#${slotId}**`,
+                        flags: [MessageFlags.Ephemeral]
                     });
 
-                } catch (error) {
-                    console.error('--- MARIADB ERROR ---');
-                    console.error(error);
-                    
-                    await interaction.followUp({ 
-                        content: `❌ **Database Error:** ${error.message}`, 
-                        ephemeral: true 
-                    });
-                } finally {
-                    if (conn) conn.release();
+                } else if (isCancelling) {
+                    const isAdmin = interaction.member.permissions.has('Administrator');
+                    const result = await conn.query(
+                        `UPDATE booking_slots 
+                         SET booked_by_id = NULL, booked_by_name = NULL, is_available = TRUE, reminder_sent = FALSE
+                         WHERE slot_id = ? AND (booked_by_id = ? OR ?)`,
+                        [slotId, interaction.user.id, isAdmin]
+                    );
+
+                    if (result.affectedRows > 0) {
+                        await interaction.editReply({ 
+                            content: `✅ Successfully cancelled slot **#${slotId}**.`, 
+                            components: [] 
+                        });
+                    } else {
+                        await interaction.followUp({
+                            content: "❌ Could not cancel. This slot may already be available.",
+                            flags: [MessageFlags.Ephemeral]
+                        });
+                    }
                 }
-            }
 
-            // HANDLE CANCELLATION
-            if (interaction.customId.startsWith('cancel_slot_')) {
-                await interaction.deferUpdate();
-                const slotId = interaction.customId.replace('cancel_slot_', '');
-
-                const result = await conn.query(
-                    `UPDATE booking_slots 
-                        SET booked_by_id = NULL, booked_by_name = NULL, is_available = TRUE, reminder_sent = FALSE
-                        WHERE slot_id = ? AND (booked_by_id = ? OR ?)`,
-                    [slotId, interaction.user.id, interaction.member.permissions.has('Administrator')]
-                );
-
-                if (result.affectedRows > 0) {
-                    await interaction.editReply({ 
-                        content: `✅ Successfully cancelled slot **#${slotId}**. Your dashboard has been updated.`, 
-                        components: [] 
-                    });
-                }
+            } catch (error) {
+                console.error('--- BUTTON HANDLER ERROR ---');
+                console.error(error);
+                await interaction.followUp({ 
+                    content: `❌ **Database Error:** ${error.message}`, 
+                    flags: [MessageFlags.Ephemeral] 
+                });
+            } finally {
+                if (conn) conn.release();
             }
         }
-
-
     },
 };
