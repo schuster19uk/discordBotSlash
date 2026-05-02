@@ -1,5 +1,6 @@
 const pool = require('../database/pool');
 const { MessageFlags } = require('discord.js');
+const { DateTime } = require('luxon');
 
 module.exports = {
     name: 'interactionCreate',
@@ -36,7 +37,6 @@ module.exports = {
             let conn; 
 
             try {
-                // Determine Slot ID and Action
                 const isBooking = interaction.customId.startsWith('book_slot_');
                 const isCancelling = interaction.customId.startsWith('cancel_slot_');
                 
@@ -45,28 +45,37 @@ module.exports = {
                 const rawId = interaction.customId.replace('book_slot_', '').replace('cancel_slot_', '');
                 const slotId = isNaN(rawId) ? rawId : parseInt(rawId);
 
-                // Acknowledge immediately
                 await interaction.deferUpdate();
-
                 conn = await pool.getConnection();
 
                 if (isBooking) {
+                    // Use RETURNING start_time to get the date without a second SELECT query
                     const result = await conn.query(
                         `UPDATE booking_slots 
                          SET booked_by_id = ?, booked_by_name = ?, is_available = FALSE 
-                         WHERE slot_id = ? AND is_available = TRUE`, 
+                         WHERE slot_id = ? AND is_available = TRUE
+                         RETURNING start_time`, 
                         [interaction.user.id, interaction.user.username, slotId]
                     );
 
-                    if (!result || result.affectedRows == 0) {
+                    // result in MariaDB returns an array of objects for RETURNING queries
+                    if (!result || result.length === 0) {
                         return await interaction.followUp({
                             content: "⚠️ **Slot Unavailable:** Someone else just booked this.",
                             flags: [MessageFlags.Ephemeral]
                         });
                     }
 
+                    // Convert the returned time to a Discord Unix Timestamp
+                    const bookedTime = result[0].start_time;
+                    const start = bookedTime instanceof Date 
+                        ? DateTime.fromJSDate(bookedTime, { zone: 'utc' }) 
+                        : DateTime.fromSQL(bookedTime, { zone: 'utc' });
+                    
+                    const sUnix = Math.floor(start.toSeconds());
+
                     await interaction.followUp({
-                        content: `✅ **Booking Confirmed!** Slot: **#${slotId}**`,
+                        content: `✅ **Booking Confirmed!**\n📅 You are booked for: <t:${sUnix}:F>`,
                         flags: [MessageFlags.Ephemeral]
                     });
 
