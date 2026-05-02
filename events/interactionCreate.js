@@ -1,3 +1,5 @@
+const pool = require('../database/pool');
+
 module.exports = {
     name: 'interactionCreate',
     async execute(interaction, client) {
@@ -15,57 +17,60 @@ module.exports = {
                 await command.execute(interaction);
             } catch (error) {
                 console.error(`Error in ${interaction.commandName}:`, error);
-                const errorMessage = { content: '❌ There was an error executing that command.', ephemeral: true };
-                if (interaction.replied || interaction.deferred) {
-                    await interaction.followUp(errorMessage);
+                if (!interaction.replied && !interaction.deferred) {
+                    await interaction.reply({ content: '❌ Error executing command.', ephemeral: true });
                 } else {
-                    await interaction.reply(errorMessage);
+                    await interaction.followUp({ content: '❌ Error executing command.', ephemeral: true });
                 }
             }
-            return; // Exit after handling command
+            return;
         }
 
-        // --- 2. HANDLE BUTTON CLICKS ---
+        // --- 2. HANDLE BUTTON CLICKS (MARIADB OPTIMIZED) ---
         if (interaction.isButton()) {
             if (interaction.customId.startsWith('book_slot_')) {
-                const slotId = interaction.customId.replace('book_slot_', '');
+                // Extract and convert ID to number if your DB uses INT for slot_id
+                const rawId = interaction.customId.replace('book_slot_', '');
+                const slotId = isNaN(rawId) ? rawId : parseInt(rawId);
+                
                 let conn;
 
                 try {
-                    // 1. Acknowledge the click immediately
+                    // 1. Stop the "loading" state on the button
                     await interaction.deferUpdate();
 
                     conn = await pool.getConnection();
 
-                    // 2. Execute the query using the user's Discord info
+                    // 2. Execute MariaDB Query
+                    // Note: MariaDB driver returns a 'ResultSetHeader' object directly
                     const result = await conn.query(
                         `UPDATE booking_slots 
-                        SET booked_by_id = ?, booked_by_name = ?, is_available = FALSE 
-                        WHERE slot_id = ? AND is_available = TRUE`, 
+                         SET booked_by_id = ?, booked_by_name = ?, is_available = FALSE 
+                         WHERE slot_id = ? AND is_available = TRUE`, 
                         [interaction.user.id, interaction.user.username, slotId]
                     );
 
-                    /**
-                     * Note: result.affectedRows works for the 'mysql2' and 'mariadb' packages.
-                     * If the slot was already taken, affectedRows will be 0.
-                     */
-                    if (result.affectedRows === 0) {
+                    // 3. Check affectedRows (MariaDB uses BigInt for this sometimes)
+                    // We check > 0 to be safe
+                    if (!result || result.affectedRows == 0) {
                         return await interaction.followUp({
-                            content: "⚠️ **Booking Failed:** This slot was just taken by someone else or is no longer available.",
+                            content: "⚠️ **Slot Unavailable:** This appointment was just booked by someone else.",
                             ephemeral: true
                         });
                     }
 
-                    // 3. Confirm success to the user
+                    // 4. Success!
                     await interaction.followUp({
-                        content: `✅ **Success!** You have booked slot **#${slotId}**.\n📅 Check your DMs for confirmation (if applicable).`,
+                        content: `✅ **Booking Confirmed!**\nSlot: **#${slotId}**\nUser: **${interaction.user.username}**`,
                         ephemeral: true
                     });
 
                 } catch (error) {
-                    console.error('Database Update Error:', error);
+                    console.error('--- MARIADB ERROR ---');
+                    console.error(error);
+                    
                     await interaction.followUp({ 
-                        content: '❌ **Error:** Could not process booking at this time.', 
+                        content: `❌ **Database Error:** ${error.message}`, 
                         ephemeral: true 
                     });
                 } finally {
