@@ -34,6 +34,13 @@ module.exports = {
 
         // --- 2. HANDLE BUTTON CLICKS ---
         if (interaction.isButton()) {
+            const REQUIRED_ROLE_ID = process.env.REQUIRED_ROLE_ID;
+            if (REQUIRED_ROLE_ID && !interaction.member.roles.cache.has(REQUIRED_ROLE_ID)) {
+                return await interaction.followUp({ 
+                    content: "🚫 You do not have the required role to book slots.", 
+                    flags: [MessageFlags.Ephemeral] 
+                });
+            }
             let conn; 
 
             try {
