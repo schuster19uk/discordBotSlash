@@ -142,3 +142,13 @@ If you pushed new code from your home PC to GitHub and want to pull it onto the 
 git pull
 npm install  # Only needed if you added new packages
 pm2 restart booking-bot
+
+
+
+pm2 start index.js --name "booking-bot-slash"
+pm2 startup
+pm2 save
+
+pm2 restart booking-bot-slash
+
+pm2 list
