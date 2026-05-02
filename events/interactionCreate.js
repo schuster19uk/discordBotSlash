@@ -3,6 +3,9 @@ module.exports = {
     async execute(interaction, client) {
         if (!interaction.isChatInputCommand()) return;
 
+        const COMMAND_CHANNEL_ID = process.env.COMMAND_CHANNEL_ID;
+        if (COMMAND_CHANNEL_ID && COMMAND_CHANNEL_ID !== '0' && interaction.channelId !== COMMAND_CHANNEL_ID) return;
+
         const command = client.commands.get(interaction.commandName);
 
         if (!command) return;
