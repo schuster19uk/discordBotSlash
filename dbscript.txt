@@ -23,6 +23,9 @@ CREATE TABLE booking_slots (
 
 ALTER TABLE booking_slots ADD UNIQUE (start_time);
 
+ALTER TABLE booking_slots 
+ADD COLUMN is_no_show BOOLEAN DEFAULT FALSE;
+
 -- Example Insert:
 INSERT INTO booking_slots (start_time, end_time) 
 VALUES ('2026-05-01 14:00:00', '2026-05-01 15:00:00');
