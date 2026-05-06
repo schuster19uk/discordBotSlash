@@ -34,6 +34,24 @@ module.exports = {
 
         // --- 2. HANDLE BUTTON CLICKS ---
         if (interaction.isButton()) {
+            
+            // --- NEW: HANDLE PAGINATION BUTTONS ---
+            if (interaction.customId.startsWith('avail_page_')) {
+                // Determine which command to re-run (e.g., 'slots' or 'availability')
+                // If you kept the new command named 'slots', use that here.
+                const command = client.commands.get('slots'); 
+                if (command) {
+                    try {
+                        // deferUpdate keeps the same message and just shows the loading state
+                        await interaction.deferUpdate();
+                        return await command.execute(interaction);
+                    } catch (error) {
+                        console.error('Pagination Error:', error);
+                    }
+                }
+                return;
+            }
+
             let conn; 
 
             try {
@@ -43,7 +61,6 @@ module.exports = {
                 
                 if (!isBooking && !isCancelling && !isNoShow) return;
 
-                // Extract the ID regardless of which button was pressed
                 const rawId = interaction.customId
                     .replace('book_slot_', '')
                     .replace('cancel_slot_', '')
@@ -108,17 +125,12 @@ module.exports = {
                     let params;
 
                     if (isNoShow) {
-                        // Logic for No Show: Keep user info, set the flag, but leave is_available = FALSE
-                        // so the slot remains "occupied" in history.
-                        query = `UPDATE booking_slots 
-                                SET is_no_show = TRUE 
-                                WHERE slot_id = ?`;
+                        query = `UPDATE booking_slots SET is_no_show = TRUE WHERE slot_id = ?`;
                         params = [slotId];
                     } else {
-                        // Logic for standard Cancellation: Reset everything
                         query = `UPDATE booking_slots 
-                                SET booked_by_id = NULL, booked_by_name = NULL, is_available = TRUE, reminder_sent = FALSE, is_no_show = FALSE
-                                WHERE slot_id = ? AND (booked_by_id = ? OR ?)`;
+                                 SET booked_by_id = NULL, booked_by_name = NULL, is_available = TRUE, reminder_sent = FALSE, is_no_show = FALSE
+                                 WHERE slot_id = ? AND (booked_by_id = ? OR ?)`;
                         params = [slotId, interaction.user.id, isAdmin];
                     }
 
@@ -126,7 +138,7 @@ module.exports = {
 
                     if (result.affectedRows > 0) {
                         const message = isNoShow 
-                            ? `🚩 Slot **#${slotId}** has been marked as a **No Show**. The user remains attached to the record.`
+                            ? `🚩 Slot **#${slotId}** has been marked as a **No Show**.`
                             : `✅ Slot **#${slotId}** has been cancelled and is now available.`;
                             
                         await interaction.followUp({ content: message, flags: [MessageFlags.Ephemeral] });
