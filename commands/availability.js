@@ -32,7 +32,7 @@ module.exports = {
             conn = await pool.getConnection();
             const rows = await conn.query(
                 `SELECT slot_id, start_time FROM booking_slots 
-                 WHERE is_available = TRUE 
+                 WHERE is_available = TRUE and is_special_slot = FALSE
                  AND start_time >= NOW() + INTERVAL 24 HOUR 
                  ORDER BY start_time ASC LIMIT 20`
             );
