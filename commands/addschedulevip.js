@@ -4,7 +4,7 @@ const pool = require('../database/pool');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('addscheduleExtra')
+        .setName('addschedule-extra')
         .setDescription('Set the default schedule for the next 30 days'),
     async execute(interaction) {
         if (!interaction.member.permissions.has('Administrator')) {
