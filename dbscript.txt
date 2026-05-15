@@ -16,15 +16,26 @@ CREATE TABLE booking_slots (
     booked_by_id VARCHAR(255) DEFAULT NULL,
     booked_by_name VARCHAR(255) DEFAULT NULL,
     is_available BOOLEAN DEFAULT TRUE,
+    is_no_show BOOLEAN DEFAULT FALSE,
     reminder_sent BOOLEAN DEFAULT FALSE,
-    uk_time_display VARCHAR(100)
-    nevada_time_display VARCHAR(100)
+    uk_time_display VARCHAR(100),
+    nevada_time_display VARCHAR(100),
+    UNIQUE (start_time)
 );
 
+
+-- might need to run this
 ALTER TABLE booking_slots ADD UNIQUE (start_time);
+
 
 ALTER TABLE booking_slots 
 ADD COLUMN is_no_show BOOLEAN DEFAULT FALSE;
+
+ALTER TABLE booking_slots 
+ADD COLUMN is_special_slot BOOLEAN DEFAULT FALSE;
+
+
+
 
 -- Example Insert:
 INSERT INTO booking_slots (start_time, end_time) 
