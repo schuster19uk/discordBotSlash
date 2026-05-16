@@ -112,16 +112,12 @@ const pool = require('../database/pool');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('listlessons')
-        .setDescription('Show all booked and no-show slots (Owner/Admin Only)')
-        .addIntegerOption(option => 
-            option.setName('page')
-                .setDescription('The page number to view')
-                .setMinValue(1)),
+        .setDescription('Show all booked and no-show slots (Owner/Admin Only)'),
     async execute(interaction) {
         const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
         if (!isAdmin) {
             return await interaction.reply({ 
-                content: "🚫 You do not have permission to view this list.", 
+                content: "🚫 You do not have permission to view the master booking list.", 
                 flags: [MessageFlags.Ephemeral] 
             });
         }
@@ -129,10 +125,10 @@ module.exports = {
         const isButton = interaction.isButton();
         if (!isButton) await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
-        // 1. Pagination Math
+        // 1. Pagination Logic
         const itemsPerPage = 10;
-        let page = interaction.options?.getInteger('page') || 1;
-        if (isButton) {
+        let page = 1;
+        if (isButton && interaction.customId.startsWith('list_page_')) {
             page = parseInt(interaction.customId.replace('list_page_', ''));
         }
         const offset = (page - 1) * itemsPerPage;
@@ -141,16 +137,16 @@ module.exports = {
         try {
             conn = await pool.getConnection();
             
-            // Get total count for pagination
-            const countResult = await conn.query(
+            // Get total count for page numbers
+            const countRes = await conn.query(
                 `SELECT COUNT(*) as total FROM booking_slots 
                  WHERE (is_available = FALSE OR is_no_show = TRUE)
                  AND start_time >= NOW() - INTERVAL 3 HOUR`
             );
-            const totalItems = Number(countResult[0].total);
+            const totalItems = Number(countRes[0].total);
             const totalPages = Math.ceil(totalItems / itemsPerPage);
 
-            // Fetch current page items
+            // Fetch only 10 items for the current page
             const rows = await conn.query(
                 `SELECT slot_id, start_time, booked_by_name, is_no_show FROM booking_slots 
                  WHERE (is_available = FALSE OR is_no_show = TRUE)
@@ -160,7 +156,7 @@ module.exports = {
             );
 
             if (!rows || rows.length === 0) {
-                return await interaction.editReply("📅 No upcoming or recent bookings found.");
+                return await interaction.editReply("📅 No bookings found for this page.");
             }
 
             let list = `**MASTER BOOKING LIST (Page ${page}/${totalPages})**\n━━━━━━━━━━━━━━━━━━━━━━━━\n`;
@@ -174,6 +170,8 @@ module.exports = {
 
                 const sUnix = Math.floor(start.toSeconds());
                 const statusEmoji = row.is_no_show ? "🚩 **NO SHOW**" : "✅ Booked";
+                
+                // Show the correct list number based on the page
                 list += `**${offset + index + 1}.** <t:${sUnix}:F>\n👤 User: **${row.booked_by_name || 'Unknown'}** | ${statusEmoji}\n\n`;
 
                 currentRow.addComponents(
@@ -192,23 +190,32 @@ module.exports = {
                     );
                 }
 
+                // Push row every 2 lessons (4 buttons)
                 if (currentRow.components.length >= 4 || index === rows.length - 1) {
                     actionRows.push(currentRow);
                     currentRow = new ActionRowBuilder();
                 }
             });
 
-            // 2. Navigation Row
+            // 2. Add Navigation Row
             const navRow = new ActionRowBuilder();
             if (page > 1) {
-                navRow.addComponents(new ButtonBuilder().setCustomId(`list_page_${page - 1}`).setLabel('⬅️ Previous').setStyle(ButtonStyle.Primary));
+                navRow.addComponents(
+                    new ButtonBuilder().setCustomId(`list_page_${page - 1}`).setLabel('⬅️ Previous').setStyle(ButtonStyle.Primary)
+                );
             }
             if (page < totalPages) {
-                navRow.addComponents(new ButtonBuilder().setCustomId(`list_page_${page + 1}`).setLabel('Next ➡️').setStyle(ButtonStyle.Primary));
+                navRow.addComponents(
+                    new ButtonBuilder().setCustomId(`list_page_${page + 1}`).setLabel('Next ➡️').setStyle(ButtonStyle.Primary)
+                );
             }
+
             if (navRow.components.length > 0) actionRows.push(navRow);
 
-            await interaction.editReply({ content: list, components: actionRows });
+            await interaction.editReply({
+                content: list,
+                components: actionRows.slice(0, 5) // Guaranteed safety
+            });
 
         } catch (err) {
             console.error(err);

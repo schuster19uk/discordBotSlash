@@ -204,6 +204,7 @@ module.exports = {
             
             // --- HANDLE PAGINATION (Availability/Booking) ---
             if (interaction.customId.startsWith('avail_page_')) {
+                // This supports both /slots and /book aliases
                 const command = client.commands.get('slots') || client.commands.get('book');
                 if (command) {
                     try {
@@ -216,7 +217,7 @@ module.exports = {
                 return;
             }
 
-            // --- HANDLE PAGINATION (Master List) ---
+            // --- HANDLE PAGINATION (Master List / listlessons) ---
             if (interaction.customId.startsWith('list_page_')) {
                 const command = client.commands.get('listlessons');
                 if (command) {
@@ -239,8 +240,7 @@ module.exports = {
                 
                 if (!isBooking && !isCancelling && !isNoShow) return;
 
-                // Extract the Slot ID from the end of the customId string
-                // Works for: book_slot_123, cancel_slot_123, noshow_slot_123
+                // Extract the Slot ID from the end of the customId string (safest method)
                 const parts = interaction.customId.split('_');
                 const rawId = parts[parts.length - 1];
                 const slotId = isNaN(rawId) ? rawId : parseInt(rawId);
@@ -306,7 +306,7 @@ module.exports = {
                         query = `UPDATE booking_slots SET is_no_show = TRUE WHERE slot_id = ?`;
                         params = [slotId];
                     } else {
-                        // Admins can cancel anyone's slot; users can only cancel their own
+                        // Admins can cancel any slot; users can only cancel their own
                         query = `UPDATE booking_slots 
                                  SET booked_by_id = NULL, booked_by_name = NULL, is_available = TRUE, reminder_sent = FALSE, is_no_show = FALSE
                                  WHERE slot_id = ? AND (booked_by_id = ? OR ?)`;
