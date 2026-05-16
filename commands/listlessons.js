@@ -116,17 +116,22 @@ module.exports = {
     async execute(interaction) {
         const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
         if (!isAdmin) {
-            return await interaction.reply({ content: "🚫 Admin only.", flags: [MessageFlags.Ephemeral] });
+            return await interaction.reply({ 
+                content: "🚫 You do not have permission to view the master booking list.", 
+                flags: [MessageFlags.Ephemeral] 
+            });
         }
 
         const isButton = interaction.isButton();
         if (!isButton) await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
-        // --- PAGINATION SETUP ---
+        // 1. Pagination Math
         const itemsPerPage = 10;
         let page = 1;
+        
+        // If triggered by a button like 'list_page_2', extract the '2'
         if (isButton && interaction.customId.startsWith('list_page_')) {
-            page = parseInt(interaction.customId.split('_')[2]); // Get the number after list_page_
+            page = parseInt(interaction.customId.split('_')[2]);
         }
         const offset = (page - 1) * itemsPerPage;
 
@@ -134,7 +139,7 @@ module.exports = {
         try {
             conn = await pool.getConnection();
             
-            // 1. Get total count to know when to stop "Next"
+            // Get total count for page calculations
             const countRes = await conn.query(
                 `SELECT COUNT(*) as total FROM booking_slots 
                  WHERE (is_available = FALSE OR is_no_show = TRUE)
@@ -143,7 +148,7 @@ module.exports = {
             const totalItems = Number(countRes[0].total);
             const totalPages = Math.ceil(totalItems / itemsPerPage);
 
-            // 2. Fetch only the 10 for this page
+            // Fetch only 10 items for the CURRENT page
             const rows = await conn.query(
                 `SELECT slot_id, start_time, booked_by_name, is_no_show FROM booking_slots 
                  WHERE (is_available = FALSE OR is_no_show = TRUE)
@@ -153,10 +158,10 @@ module.exports = {
             );
 
             if (!rows || rows.length === 0) {
-                return await interaction.editReply("📅 No bookings found.");
+                return await interaction.editReply("📅 No bookings found for this page.");
             }
 
-            let list = `**MASTER BOOKING LIST (Page ${page}/${totalPages})**\n*Total: ${totalItems} bookings*\n━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            let list = `**MASTER BOOKING LIST (Page ${page}/${totalPages})**\n*Total Bookings: ${totalItems}*\n━━━━━━━━━━━━━━━━━━━━━━━━\n`;
             const actionRows = [];
             let currentRow = new ActionRowBuilder();
 
@@ -168,12 +173,15 @@ module.exports = {
                 const sUnix = Math.floor(start.toSeconds());
                 const statusEmoji = row.is_no_show ? "🚩 **NO SHOW**" : "✅ Booked";
                 
-                list += `**${offset + index + 1}.** <t:${sUnix}:F>\n👤 User: **${row.booked_by_name || 'Unknown'}** | ${statusEmoji}\n\n`;
+                // Index is offset + current loop index to show #11, #12, etc.
+                const displayIndex = offset + index + 1;
+                list += `**${displayIndex}.** <t:${sUnix}:F>\n👤 User: **${row.booked_by_name || 'Unknown'}** | ${statusEmoji}\n\n`;
 
+                // Add buttons (Max 2 lessons per row to keep within Discord limits)
                 currentRow.addComponents(
                     new ButtonBuilder()
                         .setCustomId(`cancel_slot_${row.slot_id}`)
-                        .setLabel(`Cancel #${offset + index + 1}`) 
+                        .setLabel(`Cancel #${displayIndex}`) 
                         .setStyle(ButtonStyle.Danger)
                 );
 
@@ -181,29 +189,36 @@ module.exports = {
                     currentRow.addComponents(
                         new ButtonBuilder()
                             .setCustomId(`noshow_slot_${row.slot_id}`)
-                            .setLabel(`No Show #${offset + index + 1}`) 
+                            .setLabel(`No Show #${displayIndex}`) 
                             .setStyle(ButtonStyle.Secondary)
                     );
                 }
 
-                // Push row every 2 lessons (4 buttons)
                 if (currentRow.components.length >= 4 || index === rows.length - 1) {
                     actionRows.push(currentRow);
                     currentRow = new ActionRowBuilder();
                 }
             });
 
-            // --- NAVIGATION ROW ---
+            // 2. Add Navigation Buttons Row
             const navRow = new ActionRowBuilder();
             if (page > 1) {
-                navRow.addComponents(new ButtonBuilder().setCustomId(`list_page_${page - 1}`).setLabel('⬅️ Previous').setStyle(ButtonStyle.Primary));
+                navRow.addComponents(
+                    new ButtonBuilder().setCustomId(`list_page_${page - 1}`).setLabel('⬅️ Previous').setStyle(ButtonStyle.Primary)
+                );
             }
             if (page < totalPages) {
-                navRow.addComponents(new ButtonBuilder().setCustomId(`list_page_${page + 1}`).setLabel('Next ➡️').setStyle(ButtonStyle.Primary));
+                navRow.addComponents(
+                    new ButtonBuilder().setCustomId(`list_page_${page + 1}`).setLabel('Next ➡️').setStyle(ButtonStyle.Primary)
+                );
             }
+
             if (navRow.components.length > 0) actionRows.push(navRow);
 
-            await interaction.editReply({ content: list, components: actionRows });
+            await interaction.editReply({
+                content: list,
+                components: actionRows.slice(0, 5) // Absolute safety for Discord's 5-row limit
+            });
 
         } catch (err) {
             console.error(err);
