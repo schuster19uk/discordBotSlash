@@ -18,7 +18,8 @@ module.exports = {
         const REQUIRED_ROLE_ID = process.env.REQUIRED_ROLE_ID;
         const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
 
-        if (!isAdmin && REQUIRED_ROLE_ID && !interaction.member.roles.cache.has(REQUIRED_ROLE_ID)) {
+        //&& REQUIRED_ROLE_ID && !interaction.member.roles.cache.has(REQUIRED_ROLE_ID)
+        if (!isAdmin) {
             return await interaction.reply({ 
                 content: "🚫 You do not have permission to view the master booking list.", 
                 flags: [MessageFlags.Ephemeral] 
