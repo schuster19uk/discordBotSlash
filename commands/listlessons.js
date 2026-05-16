@@ -116,20 +116,15 @@ module.exports = {
     async execute(interaction) {
         const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
         if (!isAdmin) {
-            return await interaction.reply({ 
-                content: "🚫 Admin only.", 
-                flags: [MessageFlags.Ephemeral] 
-            });
+            return await interaction.reply({ content: "🚫 Admin only.", flags: [MessageFlags.Ephemeral] });
         }
 
         const isButton = interaction.isButton();
         if (!isButton) await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
-        // 1. Pagination Setup
+        // --- 1. PAGINATION MATH ---
         const itemsPerPage = 10;
         let page = 1;
-        
-        // Check if a navigation button was clicked (e.g., list_page_2)
         if (isButton && interaction.customId.startsWith('list_page_')) {
             page = parseInt(interaction.customId.split('_')[2]);
         }
@@ -139,7 +134,7 @@ module.exports = {
         try {
             conn = await pool.getConnection();
             
-            // Get total count to calculate total pages
+            // Get total count for page info
             const countRes = await conn.query(
                 `SELECT COUNT(*) as total FROM booking_slots 
                  WHERE (is_available = FALSE OR is_no_show = TRUE)
@@ -148,7 +143,7 @@ module.exports = {
             const totalItems = Number(countRes[0].total);
             const totalPages = Math.ceil(totalItems / itemsPerPage);
 
-            // Fetch only the 10 lessons for the current page
+            // Fetch only the 10 for this page
             const rows = await conn.query(
                 `SELECT slot_id, start_time, booked_by_name, is_no_show FROM booking_slots 
                  WHERE (is_available = FALSE OR is_no_show = TRUE)
@@ -158,7 +153,7 @@ module.exports = {
             );
 
             if (!rows || rows.length === 0) {
-                return await interaction.editReply("📅 No bookings found on this page.");
+                return await interaction.editReply("📅 No bookings found.");
             }
 
             let list = `**MASTER BOOKING LIST (Page ${page}/${totalPages})**\n*Total: ${totalItems} bookings*\n━━━━━━━━━━━━━━━━━━━━━━━━\n`;
@@ -176,7 +171,7 @@ module.exports = {
                 
                 list += `**${displayNum}.** <t:${sUnix}:F>\n👤 User: **${row.booked_by_name || 'Unknown'}** | ${statusEmoji}\n\n`;
 
-                // Add Action Buttons for each lesson
+                // Add "Cancel" button
                 currentRow.addComponents(
                     new ButtonBuilder()
                         .setCustomId(`cancel_slot_${row.slot_id}`)
@@ -184,6 +179,7 @@ module.exports = {
                         .setStyle(ButtonStyle.Danger)
                 );
 
+                // Add "No Show" button
                 if (!row.is_no_show) {
                     currentRow.addComponents(
                         new ButtonBuilder()
@@ -193,32 +189,29 @@ module.exports = {
                     );
                 }
 
-                // Push row every 2 lessons to avoid Discord's button limit per row
+                // CRITICAL FIX: Push row every 2 lessons (max 4 buttons)
+                // This keeps us under the 5-row limit.
                 if (currentRow.components.length >= 4 || index === rows.length - 1) {
                     actionRows.push(currentRow);
                     currentRow = new ActionRowBuilder();
                 }
             });
 
-            // 2. Add Navigation Row (Previous/Next)
+            // --- 2. NAVIGATION ROW ---
             const navRow = new ActionRowBuilder();
             if (page > 1) {
-                navRow.addComponents(
-                    new ButtonBuilder()
-                        .setCustomId(`list_page_${page - 1}`)
-                        .setLabel('⬅️ Previous')
-                        .setStyle(ButtonStyle.Primary)
-                );
+                navRow.addComponents(new ButtonBuilder().setCustomId(`list_page_${page - 1}`).setLabel('⬅️ Prev').setStyle(ButtonStyle.Primary));
             }
             if (page < totalPages) {
-                navRow.addComponents(
-                    new ButtonBuilder()
-                        .setCustomId(`list_page_${page + 1}`)
-                        .setLabel('Next ➡️')
-                        .setStyle(ButtonStyle.Primary)
-                );
+                navRow.addComponents(new ButtonBuilder().setCustomId(`list_page_${page + 1}`).setLabel('Next ➡️').setStyle(ButtonStyle.Primary));
             }
-            if (navRow.components.length > 0) actionRows.push(navRow);
+            
+            // Only add navRow if there are pages to turn
+            if (navRow.components.length > 0) {
+                // If we already have 5 rows, replace the last one to prevent crash
+                if (actionRows.length >= 5) actionRows[4] = navRow;
+                else actionRows.push(navRow);
+            }
 
             await interaction.editReply({ content: list, components: actionRows });
 
