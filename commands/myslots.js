@@ -52,7 +52,7 @@ module.exports = {
                     : DateTime.fromSQL(row.start_time, { zone: 'utc' });
 
                 const sUnix = Math.floor(start.toSeconds());
-                dashboard += `**${index + 1}.** <t:${sUnix}:F> (ID: \`#${row.slot_id}\`)\n`;
+                dashboard += `**${index + 1}.** <t:${sUnix}:F> (ID: \`#${row.slot_id}\`)\n (Duration 60 minutes)\n\n`;
 
                 currentRow.addComponents(
                     new ButtonBuilder()
