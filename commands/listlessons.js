@@ -1,3 +1,103 @@
+// const { 
+//     SlashCommandBuilder, 
+//     ActionRowBuilder, 
+//     ButtonBuilder, 
+//     ButtonStyle,
+//     MessageFlags,
+//     PermissionFlagsBits 
+// } = require('discord.js');
+// const { DateTime } = require('luxon');
+// const pool = require('../database/pool');
+
+// module.exports = {
+//     data: new SlashCommandBuilder()
+//         .setName('listlessons')
+//         .setDescription('Show all booked and no-show slots (Owner/Admin Only)'),
+//     async execute(interaction) {
+//         // 1. Permissions Check
+//         const REQUIRED_ROLE_ID = process.env.REQUIRED_ROLE_ID;
+//         const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+
+//         //&& REQUIRED_ROLE_ID && !interaction.member.roles.cache.has(REQUIRED_ROLE_ID)
+//         if (!isAdmin) {
+//             return await interaction.reply({ 
+//                 content: "🚫 You do not have permission to view the master booking list.", 
+//                 flags: [MessageFlags.Ephemeral] 
+//             });
+//         }
+
+//         await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
+//         let conn;
+//         try {
+//             conn = await pool.getConnection();
+            
+//             // Querying both booked and no-show slots from 3 hours ago onwards
+//             const rows = await conn.query(
+//                 `SELECT slot_id, start_time, booked_by_name, is_no_show FROM booking_slots 
+//                  WHERE (is_available = FALSE OR is_no_show = TRUE)
+//                  AND start_time >= NOW() - INTERVAL 3 HOUR 
+//                  ORDER BY start_time ASC LIMIT 10`
+//             );
+
+//             if (!rows || rows.length === 0) {
+//                 return await interaction.editReply("📅 No upcoming or recent bookings found.");
+//             }
+
+//             let list = "━━━━━━━━━━━━━━━━━━━━━━━━\n**MASTER BOOKING LIST**\n━━━━━━━━━━━━━━━━━━━━━━━━\n";
+//             const actionRows = [];
+
+//             rows.forEach((row, index) => {
+//                 const start = row.start_time instanceof Date 
+//                     ? DateTime.fromJSDate(row.start_time, { zone: 'utc' }) 
+//                     : DateTime.fromSQL(row.start_time, { zone: 'utc' });
+
+//                 const sUnix = Math.floor(start.toSeconds());
+                
+//                 // Status indicator
+//                 const statusEmoji = row.is_no_show ? "🚩 **NO SHOW**" : "✅ Booked";
+                
+//                 list += `**${index + 1}.** <t:${sUnix}:F>\n👤 User: **${row.booked_by_name || 'Unknown'}** | ${statusEmoji}\n\n`;
+
+//                 const rowButtons = new ActionRowBuilder();
+                
+//                 // Always add a Cancel button
+//                 rowButtons.addComponents(
+//                     new ButtonBuilder()
+//                         .setCustomId(`cancel_slot_${row.slot_id}`)
+//                         .setLabel(`Cancel #${index + 1}`) 
+//                         .setStyle(ButtonStyle.Danger)
+//                 );
+
+//                 // Only add a No Show button if they haven't been marked yet
+//                 if (!row.is_no_show) {
+//                     rowButtons.addComponents(
+//                         new ButtonBuilder()
+//                             .setCustomId(`noshow_slot_${row.slot_id}`)
+//                             .setLabel(`No Show #${index + 1}`) 
+//                             .setStyle(ButtonStyle.Secondary)
+//                     );
+//                 }
+                
+//                 actionRows.push(rowButtons);
+//             });
+
+//             await interaction.editReply({
+//                 content: list,
+//                 components: actionRows
+//             });
+
+//         } catch (err) {
+//             console.error("Booked Command Error:", err);
+//             await interaction.editReply("❌ Error loading master booking list." + (err.message ? `\n\n\`\`\`${err.message}\`\`\`` : ""));
+//         } finally {
+//             if (conn) conn.release();
+//         }
+//     }
+// };
+
+
+
 const { 
     SlashCommandBuilder, 
     ActionRowBuilder, 
@@ -14,11 +114,8 @@ module.exports = {
         .setName('listlessons')
         .setDescription('Show all booked and no-show slots (Owner/Admin Only)'),
     async execute(interaction) {
-        // 1. Permissions Check
-        const REQUIRED_ROLE_ID = process.env.REQUIRED_ROLE_ID;
         const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
 
-        //&& REQUIRED_ROLE_ID && !interaction.member.roles.cache.has(REQUIRED_ROLE_ID)
         if (!isAdmin) {
             return await interaction.reply({ 
                 content: "🚫 You do not have permission to view the master booking list.", 
@@ -32,7 +129,6 @@ module.exports = {
         try {
             conn = await pool.getConnection();
             
-            // Querying both booked and no-show slots from 3 hours ago onwards
             const rows = await conn.query(
                 `SELECT slot_id, start_time, booked_by_name, is_no_show FROM booking_slots 
                  WHERE (is_available = FALSE OR is_no_show = TRUE)
@@ -46,6 +142,7 @@ module.exports = {
 
             let list = "━━━━━━━━━━━━━━━━━━━━━━━━\n**MASTER BOOKING LIST**\n━━━━━━━━━━━━━━━━━━━━━━━━\n";
             const actionRows = [];
+            let currentRow = new ActionRowBuilder();
 
             rows.forEach((row, index) => {
                 const start = row.start_time instanceof Date 
@@ -53,43 +150,42 @@ module.exports = {
                     : DateTime.fromSQL(row.start_time, { zone: 'utc' });
 
                 const sUnix = Math.floor(start.toSeconds());
-                
-                // Status indicator
                 const statusEmoji = row.is_no_show ? "🚩 **NO SHOW**" : "✅ Booked";
                 
                 list += `**${index + 1}.** <t:${sUnix}:F>\n👤 User: **${row.booked_by_name || 'Unknown'}** | ${statusEmoji}\n\n`;
 
-                const rowButtons = new ActionRowBuilder();
-                
-                // Always add a Cancel button
-                rowButtons.addComponents(
+                // Add Buttons to current row
+                currentRow.addComponents(
                     new ButtonBuilder()
                         .setCustomId(`cancel_slot_${row.slot_id}`)
                         .setLabel(`Cancel #${index + 1}`) 
                         .setStyle(ButtonStyle.Danger)
                 );
 
-                // Only add a No Show button if they haven't been marked yet
                 if (!row.is_no_show) {
-                    rowButtons.addComponents(
+                    currentRow.addComponents(
                         new ButtonBuilder()
                             .setCustomId(`noshow_slot_${row.slot_id}`)
                             .setLabel(`No Show #${index + 1}`) 
                             .setStyle(ButtonStyle.Secondary)
                     );
                 }
-                
-                actionRows.push(rowButtons);
+
+                // If row is full (4-5 buttons) or it's the last row, push it
+                if (currentRow.components.length >= 4 || index === rows.length - 1) {
+                    actionRows.push(currentRow);
+                    currentRow = new ActionRowBuilder();
+                }
             });
 
             await interaction.editReply({
                 content: list,
-                components: actionRows
+                components: actionRows.slice(0, 5) // Hard cap at 5 rows
             });
 
         } catch (err) {
             console.error("Booked Command Error:", err);
-            await interaction.editReply("❌ Error loading master booking list." + (err.message ? `\n\n\`\`\`${err.message}\`\`\`` : ""));
+            await interaction.editReply("❌ Error loading master booking list.");
         } finally {
             if (conn) conn.release();
         }
