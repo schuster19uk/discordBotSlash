@@ -29,7 +29,9 @@ module.exports = {
 
         // Handle if this was called from a button or slash command
         const isButton = interaction.isButton();
-        if (!isButton) await interaction.deferReply();
+        if (!isButton) {
+            await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+        }
 
         // 2. Pagination Math
         const itemsPerPage = 10;
@@ -117,8 +119,13 @@ module.exports = {
             if (navRow.components.length > 0) actionRows.push(navRow);
 
             // Update original message if button, otherwise new reply
-            const payload = { content: list, components: actionRows };
-            isButton ? await interaction.editReply(payload) : await interaction.editReply(payload);
+            const payload = { 
+                content: list, 
+                components: actionRows 
+            };
+
+            // Send it (This works for both the initial command and button clicks)
+            await interaction.editReply(payload);
 
         } catch (err) {
             console.error("Pagination Error:", err);
