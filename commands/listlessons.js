@@ -89,7 +89,7 @@ module.exports = {
 
         } catch (err) {
             console.error("Booked Command Error:", err);
-            await interaction.editReply("❌ Error loading master booking list.");
+            await interaction.editReply("❌ Error loading master booking list." + (err.message ? `\n\n\`\`\`${err.message}\`\`\`` : ""));
         } finally {
             if (conn) conn.release();
         }
