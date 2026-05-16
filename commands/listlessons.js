@@ -116,20 +116,17 @@ module.exports = {
     async execute(interaction) {
         const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
         if (!isAdmin) {
-            return await interaction.reply({ 
-                content: "🚫 You do not have permission to view the master booking list.", 
-                flags: [MessageFlags.Ephemeral] 
-            });
+            return await interaction.reply({ content: "🚫 Admin only.", flags: [MessageFlags.Ephemeral] });
         }
 
         const isButton = interaction.isButton();
         if (!isButton) await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
-        // 1. Pagination Logic
+        // --- PAGINATION SETUP ---
         const itemsPerPage = 10;
         let page = 1;
         if (isButton && interaction.customId.startsWith('list_page_')) {
-            page = parseInt(interaction.customId.replace('list_page_', ''));
+            page = parseInt(interaction.customId.split('_')[2]); // Get the number after list_page_
         }
         const offset = (page - 1) * itemsPerPage;
 
@@ -137,7 +134,7 @@ module.exports = {
         try {
             conn = await pool.getConnection();
             
-            // Get total count for page numbers
+            // 1. Get total count to know when to stop "Next"
             const countRes = await conn.query(
                 `SELECT COUNT(*) as total FROM booking_slots 
                  WHERE (is_available = FALSE OR is_no_show = TRUE)
@@ -146,7 +143,7 @@ module.exports = {
             const totalItems = Number(countRes[0].total);
             const totalPages = Math.ceil(totalItems / itemsPerPage);
 
-            // Fetch only 10 items for the current page
+            // 2. Fetch only the 10 for this page
             const rows = await conn.query(
                 `SELECT slot_id, start_time, booked_by_name, is_no_show FROM booking_slots 
                  WHERE (is_available = FALSE OR is_no_show = TRUE)
@@ -156,10 +153,10 @@ module.exports = {
             );
 
             if (!rows || rows.length === 0) {
-                return await interaction.editReply("📅 No bookings found for this page.");
+                return await interaction.editReply("📅 No bookings found.");
             }
 
-            let list = `**MASTER BOOKING LIST (Page ${page}/${totalPages})**\n━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            let list = `**MASTER BOOKING LIST (Page ${page}/${totalPages})**\n*Total: ${totalItems} bookings*\n━━━━━━━━━━━━━━━━━━━━━━━━\n`;
             const actionRows = [];
             let currentRow = new ActionRowBuilder();
 
@@ -171,7 +168,6 @@ module.exports = {
                 const sUnix = Math.floor(start.toSeconds());
                 const statusEmoji = row.is_no_show ? "🚩 **NO SHOW**" : "✅ Booked";
                 
-                // Show the correct list number based on the page
                 list += `**${offset + index + 1}.** <t:${sUnix}:F>\n👤 User: **${row.booked_by_name || 'Unknown'}** | ${statusEmoji}\n\n`;
 
                 currentRow.addComponents(
@@ -197,25 +193,17 @@ module.exports = {
                 }
             });
 
-            // 2. Add Navigation Row
+            // --- NAVIGATION ROW ---
             const navRow = new ActionRowBuilder();
             if (page > 1) {
-                navRow.addComponents(
-                    new ButtonBuilder().setCustomId(`list_page_${page - 1}`).setLabel('⬅️ Previous').setStyle(ButtonStyle.Primary)
-                );
+                navRow.addComponents(new ButtonBuilder().setCustomId(`list_page_${page - 1}`).setLabel('⬅️ Previous').setStyle(ButtonStyle.Primary));
             }
             if (page < totalPages) {
-                navRow.addComponents(
-                    new ButtonBuilder().setCustomId(`list_page_${page + 1}`).setLabel('Next ➡️').setStyle(ButtonStyle.Primary)
-                );
+                navRow.addComponents(new ButtonBuilder().setCustomId(`list_page_${page + 1}`).setLabel('Next ➡️').setStyle(ButtonStyle.Primary));
             }
-
             if (navRow.components.length > 0) actionRows.push(navRow);
 
-            await interaction.editReply({
-                content: list,
-                components: actionRows.slice(0, 5) // Guaranteed safety
-            });
+            await interaction.editReply({ content: list, components: actionRows });
 
         } catch (err) {
             console.error(err);
