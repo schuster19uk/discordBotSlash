@@ -202,22 +202,7 @@ module.exports = {
         // --- 2. HANDLE BUTTON CLICKS ---
         if (interaction.isButton()) {
             
-            // --- HANDLE PAGINATION (Availability/Booking) ---
-            if (interaction.customId.startsWith('avail_page_')) {
-                // This supports both /slots and /book aliases
-                const command = client.commands.get('slots') || client.commands.get('book');
-                if (command) {
-                    try {
-                        await interaction.deferUpdate();
-                        return await command.execute(interaction);
-                    } catch (error) {
-                        console.error('Pagination Error:', error);
-                    }
-                }
-                return;
-            }
-
-            // --- HANDLE PAGINATION (Master List / listlessons) ---
+            // --- HANDLE MASTER LIST PAGINATION (Fixes your error) ---
             if (interaction.customId.startsWith('list_page_')) {
                 const command = client.commands.get('listlessons');
                 if (command) {
@@ -226,6 +211,20 @@ module.exports = {
                         return await command.execute(interaction);
                     } catch (error) {
                         console.error('List Pagination Error:', error);
+                    }
+                }
+                return;
+            }
+
+            // --- HANDLE BOOKING PAGINATION (/slots or /book) ---
+            if (interaction.customId.startsWith('avail_page_')) {
+                const command = client.commands.get('slots') || client.commands.get('book');
+                if (command) {
+                    try {
+                        await interaction.deferUpdate();
+                        return await command.execute(interaction);
+                    } catch (error) {
+                        console.error('Pagination Error:', error);
                     }
                 }
                 return;
@@ -240,7 +239,6 @@ module.exports = {
                 
                 if (!isBooking && !isCancelling && !isNoShow) return;
 
-                // Extract the Slot ID from the end of the customId string (safest method)
                 const parts = interaction.customId.split('_');
                 const rawId = parts[parts.length - 1];
                 const slotId = isNaN(rawId) ? rawId : parseInt(rawId);
@@ -306,7 +304,6 @@ module.exports = {
                         query = `UPDATE booking_slots SET is_no_show = TRUE WHERE slot_id = ?`;
                         params = [slotId];
                     } else {
-                        // Admins can cancel any slot; users can only cancel their own
                         query = `UPDATE booking_slots 
                                  SET booked_by_id = NULL, booked_by_name = NULL, is_available = TRUE, reminder_sent = FALSE, is_no_show = FALSE
                                  WHERE slot_id = ? AND (booked_by_id = ? OR ?)`;
@@ -323,7 +320,7 @@ module.exports = {
                         await interaction.followUp({ content: message, flags: [MessageFlags.Ephemeral] });
                     } else {
                         await interaction.followUp({
-                            content: "❌ Action failed. You may only cancel your own bookings, or the slot was already changed.",
+                            content: "❌ Action failed. The slot may have already been modified.",
                             flags: [MessageFlags.Ephemeral]
                         });
                     }
