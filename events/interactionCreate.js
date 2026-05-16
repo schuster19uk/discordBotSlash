@@ -106,7 +106,7 @@ module.exports = {
                     const sUnix = Math.floor(start.toSeconds());
 
                     await interaction.followUp({
-                        content: `✅ **Booking Confirmed!**\n📅 You are booked for: <t:${sUnix}:F>`,
+                        content: `✅ **Booking Confirmed!**\n📅 You are booked for: <t:${sUnix}:F>\n (Duration 60 minutes)`,
                         flags: [MessageFlags.Ephemeral]
                     });
 

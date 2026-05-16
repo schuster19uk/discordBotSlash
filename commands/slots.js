@@ -79,7 +79,7 @@ module.exports = {
                 const sUnix = Math.floor(start.toSeconds());
                 const displayIndex = offset + index + 1; // Numbering persists across pages
                 
-                list += `**${displayIndex}.** <t:${sUnix}:F>\n`;
+                list += `**${displayIndex}.** <t:${sUnix}:F> (Duration 60 minutes) \n`;
 
                 slotButtons.addComponents(
                     new ButtonBuilder()
