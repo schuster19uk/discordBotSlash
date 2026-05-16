@@ -54,11 +54,10 @@ module.exports = {
             const totalPages = Math.ceil(totalSlots / itemsPerPage);
 
             // Fetch specific slice of slots
-            // + INTERVAL 24 HOUR 
             const rows = await conn.query(
                 `SELECT slot_id, start_time FROM booking_slots 
                  WHERE is_available = TRUE AND is_special_slot = FALSE
-                 AND start_time >= NOW() 
+                 AND start_time >= NOW() + INTERVAL 24 HOUR 
                  ORDER BY start_time ASC LIMIT ? OFFSET ?`,
                 [itemsPerPage, offset]
             );
