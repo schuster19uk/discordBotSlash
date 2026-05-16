@@ -11,7 +11,7 @@ const pool = require('../database/pool');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('booked')
+        .setName('listlessons')
         .setDescription('Show all booked and no-show slots (Owner/Admin Only)'),
     async execute(interaction) {
         // 1. Permissions Check

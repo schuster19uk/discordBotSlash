@@ -10,7 +10,29 @@ module.exports = {
         console.log(`🚀 Logged in as ${client.user.tag}`);
         
         // Register slash commands
-        const commands = client.commands.map(command => command.data.toJSON());
+        //const commands = client.commands.map(command => command.data.toJSON());
+        const commands = [];
+        client.commands.forEach(command => {
+            // Add the original command
+            commands.push(command.data.toJSON());
+
+            // Check for a custom "aliases" property (optional but helpful)
+            // Or manually add duplicates for specific commands:
+            if (command.data.name === 'slots') {
+                const bookAlias = command.data.toJSON();
+                bookAlias.name = 'book';
+                bookAlias.description = 'Book a lesson';
+                commands.push(bookAlias);
+            }
+            if (command.data.name === 'mylessons') {
+                const slotsAlias = command.data.toJSON();
+                slotsAlias.name = 'myslots';
+                slotsAlias.description = 'View and manage your upcoming bookings';
+                commands.push(slotsAlias);
+            }
+
+        });
+
         const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
         
         try {
