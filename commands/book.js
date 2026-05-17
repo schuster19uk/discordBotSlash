@@ -37,7 +37,7 @@ module.exports = {
 
             const rows = await conn.query(
                 `SELECT slot_id, start_time FROM booking_slots 
-                 WHERE is_available = TRUE AND start_time >= NOW() + INTERVAL 24 HOUR 
+                 WHERE is_available = TRUE AND is_special_slot = 0 AND start_time >= NOW() + INTERVAL 24 HOUR 
                  ORDER BY start_time ASC LIMIT ? OFFSET ?`, [itemsPerPage, offset]
             );
 
