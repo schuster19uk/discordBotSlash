@@ -4,7 +4,7 @@ const pool = require('../database/pool');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('addschedule')
+        .setName('addschedulemod')
         .setDescription('Set the default schedule for the next 30 days'),
     async execute(interaction) {
         if (!interaction.member.permissions.has('Administrator')) {
@@ -18,14 +18,14 @@ module.exports = {
             conn = await pool.getConnection();
 
             const schedule = {
-                1: ["12:00", "13:00", "14:00", "15:30", "16:30", "17:30"], // Mon
-                2: ["12:00", "13:00", "14:00"],                             // Tue
-                3: ["15:00", "16:00"],                                     // Wed
-                4: ["12:00", "13:00", "14:00", "15:00", "16:00"],           // Thu
-                5: ["15:00", "16:00", "17:00", "18:00", "19:30", "20:30", "21:30"] // Fri
+                1: ["08:00", "09:00"], // Mon
+                2: ["08:00", "09:00"], // Tue
+                3: ["08:00", "09:00"],  // Wed
+                4: ["08:00", "09:00"], // Thu
+                5: ["08:00", "09:00"] // Fri
             };
 
-            for (let i = 1; i <= 42; i++) {
+            for (let i = 1; i <= 30; i++) {
                 // Get the date in Nevada
                 const nvDate = DateTime.now().setZone('America/Los_Angeles').plus({ days: i });
                 const dayOfWeek = nvDate.weekday; // 1=Mon, 5=Fri
@@ -56,8 +56,8 @@ module.exports = {
                         // Updated Query to include nevada_time_display
                         await conn.query(
                             `INSERT IGNORE INTO booking_slots
-                             (start_time, end_time, uk_time_display, nevada_time_display, is_available , slot_category)
-                             VALUES (?, ?, ?, ?, TRUE , 'onstream')`,
+                             (start_time, end_time, uk_time_display, nevada_time_display, is_available , is_special_slot , slot_category) 
+                             VALUES (?, ?, ?, ?, TRUE, TRUE , 'staff')`,
                             [startUTC, endUTC, ukDisplay, nvDisplay]
                         );
                     }

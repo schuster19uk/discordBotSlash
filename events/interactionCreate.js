@@ -7,165 +7,118 @@ module.exports = {
     async execute(interaction, client) {
         // --- 1. HANDLE SLASH COMMANDS ---
         if (interaction.isChatInputCommand()) {
-            const COMMAND_CHANNEL_ID = process.env.COMMAND_CHANNEL_ID;
-            if (COMMAND_CHANNEL_ID && COMMAND_CHANNEL_ID !== '0' && interaction.channelId !== COMMAND_CHANNEL_ID) {
-                return interaction.reply({ 
-                    content: '❌ You cannot use commands in this channel.', 
-                    flags: [MessageFlags.Ephemeral] 
-                });
-            }
-
             const command = client.commands.get(interaction.commandName);
             if (!command) return;
 
             try {
+                // We let the command file handle its own defer/reply
                 await command.execute(interaction);
             } catch (error) {
                 console.error(`Error in ${interaction.commandName}:`, error);
-                const errPayload = { content: '❌ Error executing command.', flags: [MessageFlags.Ephemeral] };
-                if (!interaction.replied && !interaction.deferred) {
-                    await interaction.reply(errPayload);
-                } else {
-                    await interaction.followUp(errPayload);
-                }
+                const payload = { content: '❌ Error executing command.', flags: [MessageFlags.Ephemeral] };
+                interaction.deferred || interaction.replied ? await interaction.followUp(payload) : await interaction.reply(payload);
             }
             return;
         }
 
         // --- 2. HANDLE BUTTON CLICKS ---
         if (interaction.isButton()) {
-            
-            // --- HANDLE MASTER LIST PAGINATION (Fixes your error) ---
-            if (interaction.customId.startsWith('list_page_')) {
-                const command = client.commands.get('listlessons');
+            const { customId } = interaction;
+
+            // --- A. PAGINATION ---
+            // DO NOT use deferUpdate() here. book.js will handle it.
+            if (customId.startsWith('list_page_') || customId.startsWith('my_page_') || customId.startsWith('avail_page_')) {
+                const cmdName = customId.startsWith('list_') ? 'listlessons' : (customId.startsWith('my_') ? 'mylessons' : 'book');
+                const command = client.commands.get(cmdName);
                 if (command) {
                     try {
-                        await interaction.deferUpdate();
-                        return await command.execute(interaction);
+                        // Crucial: We let the command handle the deferral
+                        await command.execute(interaction);
                     } catch (error) {
-                        console.error('List Pagination Error:', error);
+                        console.error('Pagination Execution Error:', error);
                     }
                 }
                 return;
             }
 
-            // --- HANDLE BOOKING PAGINATION (/slots or /book) ---
-            if (interaction.customId.startsWith('avail_page_')) {
-                const command = client.commands.get('slots') || client.commands.get('book');
-                if (command) {
-                    try {
-                        await interaction.deferUpdate();
-                        return await command.execute(interaction);
-                    } catch (error) {
-                        console.error('Pagination Error:', error);
-                    }
-                }
-                return;
-            }
-
+            // --- B. DATABASE ACTIONS (Booking / Cancelling) ---
             let conn; 
-
             try {
-                const isBooking = interaction.customId.startsWith('book_slot_');
-                const isCancelling = interaction.customId.startsWith('cancel_slot_');
-                const isNoShow = interaction.customId.startsWith('noshow_slot_');
+                const isBooking = customId.startsWith('book_slot_');
+                const isCancelling = customId.startsWith('cancel_slot_');
+                const isNoShow = customId.startsWith('noshow_slot_');
                 
                 if (!isBooking && !isCancelling && !isNoShow) return;
 
-                const parts = interaction.customId.split('_');
-                const rawId = parts[parts.length - 1];
-                const slotId = isNaN(rawId) ? rawId : parseInt(rawId);
-
+                // We acknowledge ACTION buttons here immediately
                 await interaction.deferUpdate();
+                
+                const slotId = parseInt(customId.split('_').pop());
                 conn = await pool.getConnection();
 
-                // --- LOGIC: BOOKING ---
+                // 1. BOOKING LOGIC
                 if (isBooking) {
-                    const REQUIRED_ROLE_ID = process.env.REQUIRED_ROLE_ID;
-                    if (REQUIRED_ROLE_ID && !interaction.member.roles.cache.has(REQUIRED_ROLE_ID)) {
-                        return await interaction.followUp({ 
-                            content: "🚫 You do not have the required role to book slots.", 
-                            flags: [MessageFlags.Ephemeral] 
-                        });
+                    const [slot] = await conn.query(
+                        `SELECT start_time, is_available FROM booking_slots WHERE slot_id = ?`, [slotId]
+                    );
+
+                    if (!slot || !slot.is_available) {
+                        return await interaction.followUp({ content: "⚠️ This slot is no longer available.", flags: [MessageFlags.Ephemeral] });
                     }
 
-                    const result = await conn.query(
-                        `UPDATE booking_slots 
-                         SET booked_by_id = ?, booked_by_name = ?, is_available = FALSE 
-                         WHERE slot_id = ? AND is_available = TRUE`, 
+                    await conn.query(
+                        `UPDATE booking_slots SET booked_by_id = ?, booked_by_name = ?, is_available = FALSE WHERE slot_id = ?`, 
                         [interaction.user.id, interaction.user.username, slotId]
                     );
 
-                    if (!result || result.affectedRows == 0) {
-                        return await interaction.followUp({
-                            content: "⚠️ **Slot Unavailable:** Someone else just booked this.",
-                            flags: [MessageFlags.Ephemeral]
-                        });
-                    }
-
-                    const rows = await conn.query(
-                        `SELECT start_time FROM booking_slots WHERE slot_id = ?`,
-                        [slotId]
-                    );
-
-                    const start = rows[0].start_time instanceof Date 
-                        ? DateTime.fromJSDate(rows[0].start_time, { zone: 'utc' }) 
-                        : DateTime.fromSQL(rows[0].start_time, { zone: 'utc' });
-                    
-                    const sUnix = Math.floor(start.toSeconds());
-
-                    await interaction.followUp({
-                        content: `✅ **Booking Confirmed!**\n📅 You are booked for: <t:${sUnix}:F>\n (Duration 60 minutes)`,
-                        flags: [MessageFlags.Ephemeral]
+                    const unixTime = Math.floor(DateTime.fromJSDate(new Date(slot.start_time)).toSeconds());
+                    await interaction.editReply({ 
+                        content: `✅ **Booking Confirmed!**\n📅 **Date:** <t:${unixTime}:F> (60 min)`, 
+                        components: []
                     });
 
-                // --- LOGIC: CANCELLING OR NO-SHOW ---
-                } else if (isCancelling || isNoShow) {
+
+                // 2. CANCELLATION LOGIC
+                } else if (isCancelling) {
+                    const [slot] = await conn.query(`SELECT start_time FROM booking_slots WHERE slot_id = ?`, [slotId]);
+                    if (!slot) return;
+
                     const isAdmin = interaction.member.permissions.has('Administrator');
-                    
-                    if (isNoShow && !isAdmin) {
-                        return await interaction.followUp({
-                            content: "🚫 Only administrators can log a No Show.",
-                            flags: [MessageFlags.Ephemeral]
-                        });
+                    const start = DateTime.fromJSDate(new Date(slot.start_time), { zone: 'utc' });
+
+                    if (!isAdmin && start.diff(DateTime.now().toUTC(), 'hours').hours < 6) {
+                        return await interaction.followUp({ content: "🚫 Cancellation blocked (less than 6h left).", flags: [MessageFlags.Ephemeral] });
                     }
 
-                    let query;
-                    let params;
+                    await conn.query(
+                        `UPDATE booking_slots SET booked_by_id = NULL, booked_by_name = NULL, is_available = TRUE, is_no_show = FALSE 
+                        WHERE slot_id = ?`, [slotId]
+                    );
 
-                    if (isNoShow) {
-                        query = `UPDATE booking_slots SET is_no_show = TRUE WHERE slot_id = ?`;
-                        params = [slotId];
-                    } else {
-                        query = `UPDATE booking_slots 
-                                 SET booked_by_id = NULL, booked_by_name = NULL, is_available = TRUE, reminder_sent = FALSE, is_no_show = FALSE
-                                 WHERE slot_id = ? AND (booked_by_id = ? OR ?)`;
-                        params = [slotId, interaction.user.id, isAdmin];
+                    // Instead of a "Cancelled" message, we trigger the command again to show the fresh list
+                    const command = client.commands.get('mylessons');
+                    if (command) {
+                        return await command.execute(interaction); 
                     }
 
-                    const result = await conn.query(query, params);
-
-                    if (result.affectedRows > 0) {
-                        const message = isNoShow 
-                            ? `🚩 Slot **#${slotId}** has been marked as a **No Show**.`
-                            : `✅ Slot **#${slotId}** has been cancelled and is now available.`;
-                            
-                        await interaction.followUp({ content: message, flags: [MessageFlags.Ephemeral] });
-                    } else {
-                        await interaction.followUp({
-                            content: "❌ Action failed. The slot may have already been modified.",
-                            flags: [MessageFlags.Ephemeral]
-                        });
-                    }
                 }
 
             } catch (error) {
-                console.error('--- BUTTON HANDLER ERROR ---');
-                console.error(error);
-                await interaction.followUp({ 
-                    content: `❌ **Database Error:** ${error.message}`, 
-                    flags: [MessageFlags.Ephemeral] 
-                });
+                console.error('Button Error:', error);
+                // If we already deferred (which we do at the start of the button handler)
+                if (interaction.deferred || interaction.replied) {
+                    // We use editReply to change the existing list into an error message
+                    await interaction.editReply({ 
+                        content: `❌ **Transaction Failed:** ${error.message}`, 
+                        components: [] // Crucial: This removes the buttons so the user can't click them again
+                    });
+                } else {
+                    // Fallback: if something failed before deferUpdate() was called
+                    await interaction.reply({ 
+                        content: `❌ **Error:** ${error.message}`, 
+                        flags: [MessageFlags.Ephemeral] 
+                    });
+                }
             } finally {
                 if (conn) conn.release();
             }

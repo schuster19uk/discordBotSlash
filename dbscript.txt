@@ -27,15 +27,14 @@ CREATE TABLE booking_slots (
 -- might need to run this
 ALTER TABLE booking_slots ADD UNIQUE (start_time);
 
-
 ALTER TABLE booking_slots 
 ADD COLUMN is_no_show BOOLEAN DEFAULT FALSE;
 
 ALTER TABLE booking_slots 
 ADD COLUMN is_special_slot BOOLEAN DEFAULT FALSE;
 
-
-
+ALTER TABLE booking_slots 
+ADD COLUMN slot_category VARCHAR(25) DEFAULT 'None';
 
 -- Example Insert:
 INSERT INTO booking_slots (start_time, end_time) 
