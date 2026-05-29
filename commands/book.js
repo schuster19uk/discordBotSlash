@@ -45,7 +45,10 @@ module.exports = {
                 return await interaction.editReply("📅 No slots available for the selected range.");
             }
 
+            //let list = `**BOOKING SLOTS (Page ${page}/${totalPages})**\n━━━━━━━━━━━━━━━━━━━━\n`;
             let list = `**BOOKING SLOTS (Page ${page}/${totalPages})**\n━━━━━━━━━━━━━━━━━━━━\n`;
+            list += `\n⏰ All times are shown in your local time zone.\n`;
+            list += `📌 Book by clicking the square number button.\n\n`;
             const actionRows = [];
             let currentButtons = new ActionRowBuilder();
 
