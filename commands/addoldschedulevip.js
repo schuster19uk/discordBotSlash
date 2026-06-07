@@ -4,7 +4,7 @@ const pool = require('../database/pool');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('addscheduleteam')
+        .setName('addoldschedulecollaborator')
         .setDescription('Set the default schedule for the next 30 days'),
     async execute(interaction) {
         if (!interaction.member.permissions.has('Administrator')) {
@@ -18,11 +18,11 @@ module.exports = {
             conn = await pool.getConnection();
 
             const schedule = {
-                1: ["08:00", "09:00"], // Mon
-                2: ["08:00", "09:00"], // Tue
-                3: ["08:00", "09:00"],  // Wed
-                4: ["08:00", "09:00"], // Thu
-                5: ["08:00", "09:00"] // Fri
+                1: ["11:00" ,"19:00"], // Mon
+                2: ["11:00" ,"15:30","17:00","18:30" ], // Tue
+                3: ["10:30" , "12:00" , "13:30" , "18:00" ],  // Wed
+                4: ["10:30"], // Thu
+                5: ["10:30" , "12:00", "13:30"] // Fri
             };
 
             for (let i = 1; i <= 30; i++) {
@@ -57,7 +57,7 @@ module.exports = {
                         await conn.query(
                             `INSERT IGNORE INTO booking_slots
                              (start_time, end_time, uk_time_display, nevada_time_display, is_available , is_special_slot , slot_category) 
-                             VALUES (?, ?, ?, ?, TRUE, TRUE , 'staff')`,
+                             VALUES (?, ?, ?, ?, TRUE, TRUE , 'collaborator')`,
                             [startUTC, endUTC, ukDisplay, nvDisplay]
                         );
                     }

@@ -1,0 +1,113 @@
+
+-- =========================================================================
+-- 1. LOOKUP TABLES (Option Directories with Toggles)
+-- =========================================================================
+
+CREATE TABLE IF NOT EXISTS lk_member_types (
+    type_id INT AUTO_INCREMENT PRIMARY KEY,
+    type_name VARCHAR(50) NOT NULL UNIQUE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE        
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS lk_project_statuses (
+    status_id INT AUTO_INCREMENT PRIMARY KEY,
+    status_name VARCHAR(50) NOT NULL UNIQUE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS lk_task_statuses (
+    status_id INT AUTO_INCREMENT PRIMARY KEY,
+    status_name VARCHAR(50) NOT NULL UNIQUE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS lk_task_priorities (
+    priority_id INT AUTO_INCREMENT PRIMARY KEY,
+    priority_name VARCHAR(50) NOT NULL UNIQUE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
+) ENGINE=InnoDB;
+
+
+-- =========================================================================
+-- 2. CORE DATA TABLES 
+-- =========================================================================
+
+-- THE PROJECT MEMBERS ROSTER (With Active Status Flag)
+-- CREATE TABLE IF NOT EXISTS project_members (
+--     member_id INT AUTO_INCREMENT PRIMARY KEY,
+--     display_name VARCHAR(100) NOT NULL,            
+--     discord_id VARCHAR(20) DEFAULT NULL,          
+--     type_id INT NOT NULL DEFAULT 3, 
+--     is_active BOOLEAN NOT NULL DEFAULT TRUE,       -- TRUE (1) = Active, FALSE (0) = Inactive/Left
+--     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--     
+--     FOREIGN KEY (type_id) REFERENCES lk_member_types(type_id)
+-- ) ENGINE=InnoDB;
+-- 
+-- ALTER TABLE project_members
+--     ADD COLUMN password_hash VARCHAR(255) DEFAULT NULL
+--         COMMENT 'bcrypt hash — NULL means no portal account set';
+-- 
+-- ALTER TABLE project_members
+--     ADD COLUMN username VARCHAR(50) DEFAULT NULL UNIQUE
+--         COMMENT 'Portal login username (unique). NULL = no account.';
+-- 
+-- 
+-- ALTER TABLE project_members
+--     ADD COLUMN last_login_at TIMESTAMP DEFAULT NULL
+--         COMMENT 'Timestamp of most recent successful portal login';
+
+
+-- THE PROJECT MEMBERS ROSTER (With Portal Authentication & Active Status)
+CREATE TABLE IF NOT EXISTS project_members (
+    member_id INT AUTO_INCREMENT PRIMARY KEY,
+    display_name VARCHAR(100) NOT NULL,            
+    discord_id VARCHAR(20) DEFAULT NULL,          
+    type_id INT NOT NULL DEFAULT 3, 
+    is_active BOOLEAN NOT NULL DEFAULT TRUE COMMENT 'TRUE (1) = Active, FALSE (0) = Inactive/Left',
+    
+    -- Portal Authentication Fields
+    username VARCHAR(50) DEFAULT NULL COMMENT 'Portal login username (unique). NULL = no account.',
+    password_hash VARCHAR(255) DEFAULT NULL COMMENT 'bcrypt hash — NULL means no portal account set',
+    
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_login_at TIMESTAMP DEFAULT NULL COMMENT 'Timestamp of most recent successful portal login',
+    
+    -- Constraints & Indexes
+    UNIQUE KEY uq_project_members_username (username),
+    FOREIGN KEY fk_project_members_type (type_id) REFERENCES lk_member_types(type_id)
+) ENGINE=InnoDB;
+
+-- THE PROJECTS TABLE
+CREATE TABLE IF NOT EXISTS projects (
+    project_id INT AUTO_INCREMENT PRIMARY KEY,
+    project_name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    status_id INT NOT NULL DEFAULT 2, 
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (status_id) REFERENCES lk_project_statuses(status_id)
+) ENGINE=InnoDB;
+
+-- THE PROJECT TASKS TABLE
+CREATE TABLE IF NOT EXISTS project_tasks (
+    task_id INT AUTO_INCREMENT PRIMARY KEY,
+    project_id INT DEFAULT NULL,                  -- NULL is "None"
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    priority_id INT NOT NULL DEFAULT 2,           
+    status_id INT NOT NULL DEFAULT 1,             
+    assignee_id INT NOT NULL, 
+    due_date DATE DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    -- Soft Delete Flag
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,    -- FALSE (0) = Active, TRUE (1) = Done/Deleted
+    
+    CONSTRAINT fk_project FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE,                        
+    CONSTRAINT fk_assignee_member FOREIGN KEY (assignee_id) REFERENCES project_members(member_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_task_status FOREIGN KEY (status_id) REFERENCES lk_task_statuses(status_id),
+    CONSTRAINT fk_task_priority FOREIGN KEY (priority_id) REFERENCES lk_task_priorities(priority_id)
+) ENGINE=InnoDB;

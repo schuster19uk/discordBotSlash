@@ -4,7 +4,7 @@ const { REST } = require('@discordjs/rest');
 const { Routes } = require('discord-api-types/v10');
 
 module.exports = {
-    name: 'ready',
+    name: 'clientReady',
     once: true,
     async execute(client) {
         console.log(`🚀 Logged in as ${client.user.tag}`);

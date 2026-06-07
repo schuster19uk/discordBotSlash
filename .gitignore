@@ -14,6 +14,7 @@ old
 
 # Secrets
 txtsecrets.txt
+projectmanagementDBData.txt
 
 # OS
 .DS_Store
