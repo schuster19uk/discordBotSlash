@@ -38,12 +38,12 @@ module.exports = {
                 // Start from the filter date (converted to Nevada time so dayOfWeek matches local schedules)
                 currentLoopDate = filterStartDate.setZone('America/Los_Angeles');
                 // End exactly 30 days after the filter date
-                endDate = currentLoopDate.plus({ days: 32 });
+                endDate = currentLoopDate.plus({ days: 35 });
             } else {
                 // Start from tomorrow morning in Nevada time
                 currentLoopDate = DateTime.now().setZone('America/Los_Angeles').plus({ days: 1 });
                 // End exactly 30 days from now
-                endDate = currentLoopDate.plus({ days: 32 });
+                endDate = currentLoopDate.plus({ days: 35 });
             }
 
             // 2. Loop day-by-day until we reach the calculated endDate
