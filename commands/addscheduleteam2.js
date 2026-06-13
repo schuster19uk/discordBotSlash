@@ -4,8 +4,8 @@ const pool = require('../database/pool');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('addscheduleteam')
-        .setDescription('Set the default schedule for the next 30 days'),
+        .setName('addscheduleteam2')
+        .setDescription('Set the default team schedule dynamically'),
     async execute(interaction) {
         if (!interaction.member.permissions.has('Administrator')) {
             return interaction.reply({ content: "❌ Permission denied.", ephemeral: true });
@@ -17,6 +17,11 @@ module.exports = {
         try {
             conn = await pool.getConnection();
 
+            // --- CONFIGURATION ---
+            const applyDateFilter = true; // Set to false to add 30 days from now
+            const filterStartDate = DateTime.fromISO('2026-06-27T05:30:00', { zone: 'utc' });
+            // ---------------------
+
             const schedule = {
                 1: ["08:00", "09:00"], // Mon
                 2: ["08:00", "09:00"], // Tue
@@ -25,22 +30,42 @@ module.exports = {
                 5: ["08:00", "09:00"] // Fri
             };
 
-            for (let i = 1; i <= 49; i++) {
-                // Get the date in Nevada
-                const nvDate = DateTime.now().setZone('America/Los_Angeles').plus({ days: i });
-                const dayOfWeek = nvDate.weekday; // 1=Mon, 5=Fri
+            // 1. Establish the baseline and end boundaries dynamically
+            let currentLoopDate;
+            let endDate;
+
+            if (applyDateFilter) {
+                // Start from the filter date (converted to Nevada time so dayOfWeek matches local schedules)
+                currentLoopDate = filterStartDate.setZone('America/Los_Angeles');
+                // End exactly 30 days after the filter date
+                endDate = currentLoopDate.plus({ days: 32 });
+            } else {
+                // Start from tomorrow morning in Nevada time
+                currentLoopDate = DateTime.now().setZone('America/Los_Angeles').plus({ days: 1 });
+                // End exactly 30 days from now
+                endDate = currentLoopDate.plus({ days: 32 });
+            }
+
+            // 2. Loop day-by-day until we reach the calculated endDate
+            while (currentLoopDate <= endDate) {
+                const dayOfWeek = currentLoopDate.weekday; // 1=Mon, 5=Fri
 
                 if (schedule[dayOfWeek]) {
                     for (const timeStr of schedule[dayOfWeek]) {
                         const [hour, minute] = timeStr.split(':');
 
-                        // 1. Define Nevada Start Time
-                        const startNV = nvDate.set({
+                        // Define Nevada Start Time for this specific slot
+                        const startNV = currentLoopDate.set({
                             hour: parseInt(hour),
                             minute: parseInt(minute),
                             second: 0,
                             millisecond: 0
                         });
+
+                        // Double-check: skip specific times slots that fall before the UTC timestamp
+                        if (applyDateFilter && startNV.toUTC() < filterStartDate) {
+                            continue; 
+                        }
 
                         // 2. Format Nevada Display (e.g., "12:00 GMT-7")
                         const nvDisplay = startNV.toFormat('HH:mm') + " " + startNV.offsetNameShort;
@@ -53,7 +78,7 @@ module.exports = {
                         const startUTC = startNV.toUTC().toSQL({ includeOffset: false });
                         const endUTC = startNV.plus({ hours: 1 }).toUTC().toSQL({ includeOffset: false });
 
-                        // Updated Query to include nevada_time_display
+                        // Updated Query (Maintained your team unique column values: TRUE, TRUE, 'staff')
                         await conn.query(
                             `INSERT IGNORE INTO booking_slots
                              (start_time, end_time, uk_time_display, nevada_time_display, is_available , is_special_slot , slot_category) 
@@ -62,9 +87,16 @@ module.exports = {
                         );
                     }
                 }
+
+                // Advance to the next day
+                currentLoopDate = currentLoopDate.plus({ days: 1 });
             }
 
-            interaction.editReply("✅ Schedule restocked with Dual-Timezone display columns!");
+            const successMessage = applyDateFilter 
+                ? `✅ Team schedule restocked for 30 days starting from ${filterStartDate.toFormat('yyyy-MM-dd HH:mm')} UTC!` 
+                : "✅ Team schedule restocked for the next 30 days from now!";
+
+            interaction.editReply(successMessage);
 
         } catch (err) {
             console.error(err);

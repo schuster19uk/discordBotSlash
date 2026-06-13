@@ -25,7 +25,7 @@ module.exports = {
                 5: ["10:30" , "12:00", "13:30"] // Fri
             };
 
-            for (let i = 1; i <= 30; i++) {
+            for (let i = 1; i <= 49; i++) {
                 // Get the date in Nevada
                 const nvDate = DateTime.now().setZone('America/Los_Angeles').plus({ days: i });
                 const dayOfWeek = nvDate.weekday; // 1=Mon, 5=Fri
