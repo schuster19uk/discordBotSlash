@@ -36,6 +36,8 @@ ADD COLUMN is_special_slot BOOLEAN DEFAULT FALSE;
 ALTER TABLE booking_slots 
 ADD COLUMN slot_category VARCHAR(25) DEFAULT 'None';
 
+ALTER TABLE booking_slots ADD COLUMN reminder_24h_sent BOOLEAN DEFAULT FALSE;
+
 
 
 
