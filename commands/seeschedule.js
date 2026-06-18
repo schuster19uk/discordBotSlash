@@ -13,9 +13,9 @@ module.exports = {
 
     async execute(interaction) {
         // 1. Permissions
-        if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return await interaction.reply({ content: "🚫 Admin only.", flags: [MessageFlags.Ephemeral] });
-        }
+        // if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        //     return await interaction.reply({ content: "🚫 Admin only.", flags: [MessageFlags.Ephemeral] });
+        // }
 
         // 2. Proper Acknowledgment
         if (!interaction.deferred && !interaction.replied) {
@@ -40,7 +40,7 @@ module.exports = {
             const rows = await conn.query(
                 `SELECT start_time, 
                         CASE 
-                            WHEN is_special_slot = 1 THEN '🤝 Collab' 
+                            WHEN is_special_slot = 1 THEN '📖 Other' 
                             ELSE '📖 Free Lesson' 
                         END AS session_type 
                  FROM booking_slots 
@@ -63,7 +63,7 @@ module.exports = {
                     return null;
                 }
                 const sUnix = Math.floor(dt.toSeconds());
-                return `**${i + 1}.** <t:${sUnix}:F> (60 min)\n${row.session_type}`;
+                return `**${i + 1}.** <t:${sUnix}:F> (60 min) ${row.session_type}`;
             }).filter(Boolean);
 
             if (!lines.length) {
