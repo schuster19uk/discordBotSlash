@@ -40,7 +40,7 @@ module.exports = {
             const rows = await conn.query(
                 `SELECT start_time, 
                         CASE 
-                            WHEN is_special_slot = 1 THEN '🤝 Collab' 
+                            WHEN is_special_slot = 1 THEN '🤝 Other' 
                             ELSE '📖 Free Lesson' 
                         END AS session_type 
                  FROM booking_slots 
@@ -52,32 +52,34 @@ module.exports = {
             );
 
             if (!rows || !rows.length) {
-                return await interaction.editReply("📅 No Schedule found.");
+                return await interaction.editReply({ content: "📅 No Schedule found." });
             }
 
-            let list = `## 📅 TODAY'S SCHEDULE\n`;
+            const lines = rows.map((row, i) => {
+                const dt = DateTime.fromFormat(row.start_time, 'yyyy-MM-dd HH:mm:ss', { zone: 'utc' });
+                if (!dt.isValid) {
+                    console.warn(`Invalid date for row ${i}:`, row.start_time);
+                    return null;
+                }
+                const sUnix = Math.floor(dt.toSeconds());
+                return `**${i + 1}.** <t:${sUnix}:F> (60 min) ${row.session_type}`;
+            }).filter(Boolean);
 
-            rows.forEach((row, i) => {
-                const sUnix = Math.floor(
-                    DateTime.fromFormat(row.start_time, 'yyyy-MM-dd HH:mm:ss', { zone: 'utc' }).toSeconds()
-                );
-                
-                const displayNum = i + 1;
-                list += `**${displayNum}.** <t:${sUnix}:F> (60 min)\n${row.session_type}\n\n`;
-            });
-
-            // FIX: Defensive guard. If 'list' somehow ends up as just the header or empty,
-            // provide a valid fallback string so Discord doesn't throw a 50035 error.
-            if (!list || list.trim() === `## 📅 TODAY'S SCHEDULE`) {
-                list = "📅 No active schedules to display right now.";
+            if (!lines.length) {
+                return await interaction.editReply({ content: "📅 No active schedules to display right now." });
             }
 
-            await interaction.editReply({ content: list });
+            const list = `## 📅 TODAY'S SCHEDULE\n\n${lines.join('\n')}`;
+
+            // Discord content limit is 2000 chars
+            const content = list.length > 2000 ? list.slice(0, 1997) + '…' : list;
+
+            await interaction.editReply({ content });
+
         } catch (err) {
             console.error("Database Execution Error: ", err);
-            // Fallback editReply here as well just in case
             try {
-                await interaction.editReply("❌ DB Error.");
+                await interaction.editReply({ content: "❌ DB Error." });
             } catch (discordErr) {
                 console.error("Failed to send error reply to Discord: ", discordErr);
             }
