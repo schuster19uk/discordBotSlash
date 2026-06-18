@@ -13,9 +13,9 @@ module.exports = {
 
     async execute(interaction) {
         // 1. Permissions
-        // if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-        //     return await interaction.reply({ content: "🚫 Admin only.", flags: [MessageFlags.Ephemeral] });
-        // }
+        if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+            return await interaction.reply({ content: "🚫 Admin only.", flags: [MessageFlags.Ephemeral] });
+        }
 
         // 2. Proper Acknowledgment
         if (!interaction.deferred && !interaction.replied) {
@@ -40,7 +40,7 @@ module.exports = {
             const rows = await conn.query(
                 `SELECT start_time, 
                         CASE 
-                            WHEN is_special_slot = 1 THEN '🤝 Other' 
+                            WHEN is_special_slot = 1 THEN '🤝 Collab' 
                             ELSE '📖 Free Lesson' 
                         END AS session_type 
                  FROM booking_slots 
@@ -51,7 +51,9 @@ module.exports = {
                 [streamerThreshold]
             );
 
-            if (!rows || !rows.length) return await interaction.editReply("📅 No Schedule found.");
+            if (!rows || !rows.length) {
+                return await interaction.editReply("📅 No Schedule found.");
+            }
 
             let list = `## 📅 TODAY'S SCHEDULE\n`;
 
@@ -61,15 +63,24 @@ module.exports = {
                 );
                 
                 const displayNum = i + 1;
-
-                // Outputs strictly: **1.** <timestamp> (60 min)\n🤝 Collab\n\n
-                list += `<t:${sUnix}:F> (60 min) ${row.session_type}\n`;
+                list += `**${displayNum}.** <t:${sUnix}:F> (60 min)\n${row.session_type}\n\n`;
             });
+
+            // FIX: Defensive guard. If 'list' somehow ends up as just the header or empty,
+            // provide a valid fallback string so Discord doesn't throw a 50035 error.
+            if (!list || list.trim() === `## 📅 TODAY'S SCHEDULE`) {
+                list = "📅 No active schedules to display right now.";
+            }
 
             await interaction.editReply({ content: list });
         } catch (err) {
             console.error("Database Execution Error: ", err);
-            await interaction.editReply("❌ DB Error.");
+            // Fallback editReply here as well just in case
+            try {
+                await interaction.editReply("❌ DB Error.");
+            } catch (discordErr) {
+                console.error("Failed to send error reply to Discord: ", discordErr);
+            }
         } finally {
             if (conn) conn.release();
         }
