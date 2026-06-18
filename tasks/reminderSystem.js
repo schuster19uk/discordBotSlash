@@ -23,7 +23,8 @@ async function checkReminders(client) {
             SELECT slot_id, booked_by_id, start_time 
             FROM booking_slots 
             WHERE is_available = FALSE 
-            AND reminder_24h_sent = FALSE 
+            AND reminder_24h_sent = FALSE
+            AND is_special_slot = FALSE 
             AND start_time <= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 24 HOUR)
             AND start_time >= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 23 HOUR)
         `);
@@ -49,6 +50,7 @@ async function checkReminders(client) {
             FROM booking_slots 
             WHERE is_available = FALSE 
             AND reminder_sent = FALSE 
+            AND is_special_slot = FALSE
             AND start_time <= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 20 MINUTE)
             AND start_time >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 MINUTE)
         `);
