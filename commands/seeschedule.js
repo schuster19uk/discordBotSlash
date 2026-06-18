@@ -63,14 +63,14 @@ module.exports = {
                     return null;
                 }
                 const sUnix = Math.floor(dt.toSeconds());
-                return `**${i + 1}.** <t:${sUnix}:F> (60 min) ${row.session_type}`;
+                return `<t:${sUnix}:F> (60 min) ${row.session_type}`;
             }).filter(Boolean);
 
             if (!lines.length) {
                 return await interaction.editReply({ content: "📅 No active schedules to display right now." });
             }
 
-            const list = `## 📅 TODAY'S SCHEDULE\n\n${lines.join('\n\n')}`;
+            const list = `## 📅 TODAY'S SCHEDULE\n\n${lines.join('\n')}`;
 
             // Discord content limit is 2000 chars
             const content = list.length > 2000 ? list.slice(0, 1997) + '…' : list;
