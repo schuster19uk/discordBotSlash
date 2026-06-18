@@ -45,6 +45,7 @@ module.exports = {
                         END AS session_type 
                  FROM booking_slots 
                  WHERE is_available = FALSE
+                 AND slot_category NOT IN ('staff')
                  AND booked_by_name IS NOT NULL
                  AND start_time >= ?
                  AND start_time <= ?
