@@ -24,6 +24,7 @@
     "axios": "^1.18.1",
     "discord.js": "^14.26.3",
     "dotenv": "^17.4.2",
+    "express": "^5.2.1",
     "imghash": "^1.1.4",
     "luxon": "^3.7.2",
     "mariadb": "^3.5.2"
