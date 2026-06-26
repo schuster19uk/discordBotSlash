@@ -8,12 +8,15 @@ module.exports = async (interaction, client) => {
 
     try {
         // --- PAGINATION ---
-        if (customId.startsWith('list_page_') || customId.startsWith('my_page_') || customId.startsWith('avail_page_')) {
-            const cmdName = customId.startsWith('list_') ? 'listlessons' : (customId.startsWith('my_') ? 'mylessons' : 'book');
+        if (customId.startsWith('list_page_') || customId.startsWith('my_page_') || 
+            customId.startsWith('avail_page_') || customId.startsWith('today_page_')) {
+            
+            const cmdName = customId.startsWith('list_') ? 'listlessons' 
+                : customId.startsWith('my_') ? 'mylessons' 
+                : customId.startsWith('today_') ? 'todayschedule'
+                : 'book';
             const command = client.commands.get(cmdName);
-            if (command) {
-                await command.execute(interaction);
-            }
+            if (command) await command.execute(interaction);
             return;
         }
 

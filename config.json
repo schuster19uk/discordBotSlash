@@ -1,0 +1,12 @@
+{
+  "mediaRateLimit": {
+    "maxDuplicates": 2,
+    "maxChannels": 2,
+    "timeWindowMs": 50000,
+    "hammingThreshold": 10,
+    "timeoutDays": 1,
+    "modChannelId": "1520075865373933688",
+    "timeoutEnabled": false,
+    "modChannelIdDev": "1497645563238289549"
+  }
+}

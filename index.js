@@ -6,6 +6,9 @@ const path = require('path');
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,      // Required to see messages in channels
+        GatewayIntentBits.MessageContent,    // 🚨 REQUIRED TO SEE ATTACHMENTS / TEXT
+        GatewayIntentBits.GuildMembers,
     ]
 });
 

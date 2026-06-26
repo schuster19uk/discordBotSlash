@@ -38,6 +38,20 @@ ADD COLUMN slot_category VARCHAR(25) DEFAULT 'None';
 
 ALTER TABLE booking_slots ADD COLUMN reminder_24h_sent BOOLEAN DEFAULT FALSE;
 
+ALTER TABLE booking_slots ADD COLUMN wants_anonymity BOOLEAN DEFAULT TRUE;
+
+
+
+CREATE TABLE blacklisted_media (
+    media_id INT AUTO_INCREMENT PRIMARY KEY,
+    image_hash VARCHAR(16) NOT NULL,
+    added_by_type VARCHAR(50) NOT NULL DEFAULT 'MANUAL', -- 'MANUAL' or 'AUTOMATED'
+    spammer_username VARCHAR(128) NULL,
+    spammer_id VARCHAR(64) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX(image_hash)
+);
+
 
 
 

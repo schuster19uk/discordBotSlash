@@ -24,7 +24,7 @@ module.exports = {
             const { customId } = interaction;
 
             // --- A. BOOKING ACTIONS & PAGINATION ---
-            if (customId.startsWith('list_page_') || customId.startsWith('my_page_') || customId.startsWith('avail_page_') ||
+            if (customId.startsWith('list_page_') || customId.startsWith('my_page_') || customId.startsWith('avail_page_') || customId.startsWith('today_page_') ||
                 customId.startsWith('book_slot_') || customId.startsWith('cancel_slot_') || customId.startsWith('noshow_slot_')) {
                 const bookingHandler = require('./handlers/buttonHandlers/bookingActionButtonHandler');
                 await bookingHandler(interaction, client);
