@@ -91,9 +91,14 @@ module.exports = {
         console.info('messageCreate event triggered2');
         if (message.flags.has(MessageFlags.HasSnapshot)) return;
 
-        const imageAttachment = message.attachments.find(att => 
-            /\.(jpg|jpeg|png|webp)$/i.test(att.name)
-        );
+        const imageAttachment = message.attachments.find(att => {
+            const isImgExtension = /\.(jpg|jpeg|png|webp)/i.test(att.name);
+            const isImgType = att.contentType && att.contentType.startsWith('image/');
+            // Exclude gifs since imghash is meant for static images
+            const isGif = att.name.endsWith('.gif') || (att.contentType && att.contentType.includes('gif'));
+            
+            return (isImgExtension || isImgType) && !isGif;
+        });
         console.info(`Found attachment: ${imageAttachment ? imageAttachment.name : 'NONE'}`);
         if (!imageAttachment) return;
 
