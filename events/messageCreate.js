@@ -85,10 +85,10 @@ async function sendModIncidentLog(client, user, channel, imageBuffer, fileName, 
 module.exports = {
     name: 'messageCreate',
     async execute(message, client) {
-        console.error('messageCreate event triggered');
+        console.info('messageCreate event triggered');
         if (message.author.bot || !message.guild || !message.member) return;
         // if (message.member.permissions.has('Administrator')) return;
-
+        console.info('messageCreate event triggered2');
         if (message.flags.has(MessageFlags.HasSnapshot)) return;
 
         const imageAttachment = message.attachments.find(att => 
