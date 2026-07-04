@@ -108,7 +108,7 @@ module.exports = {
             // ==========================================
             conn = await pool.getConnection();
             const blacklistedRecords = await conn.query('SELECT image_hash FROM blacklisted_media');
-            
+            console.info('messageCreate image stuff');
             let isGloballyBanned = false;
             for (const record of blacklistedRecords) {
                 const distance = getHammingDistance(currentImageHash, record.image_hash);
@@ -125,6 +125,7 @@ module.exports = {
                 await message.delete().catch(() => {});
                 return; 
             }
+            console.info('globally banned check complete');
 
             // ==========================================
             // OPTION 2: MULTI-CHANNEL SPEED TRAP
@@ -141,7 +142,7 @@ module.exports = {
             const totalPostsInWindow = trackingPayload.history.length;
 
             if (totalPostsInWindow > maxDuplicates || uniquelyTargetedChannels.size > maxChannels) {
-                
+                console.info('multi-channel speed trap triggered');
                 const exactCheck = await conn.query('SELECT media_id FROM blacklisted_media WHERE image_hash = ?', [currentImageHash]);
                 if (autoBlacklistEnabled) {
                     if (exactCheck.length === 0) {
