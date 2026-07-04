@@ -91,6 +91,10 @@ module.exports = {
         console.info('messageCreate event triggered2');
         if (message.flags.has(MessageFlags.HasSnapshot)) return;
 
+        message.attachments.forEach((att, index) => {
+            console.info(`Attachment #${index} RAW DATA -> Name: "${att.name}" | ContentType: "${att.contentType}" | URL: "${att.url ? 'Yes' : 'No'}"`);
+        });
+
         const imageAttachment = message.attachments.find(att => {
             const isImgExtension = /\.(jpg|jpeg|png|webp)/i.test(att.name);
             const isImgType = att.contentType && att.contentType.startsWith('image/');
