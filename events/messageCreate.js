@@ -24,6 +24,7 @@ const maxChannels      = mediaLimits.maxChannels !== undefined ? mediaLimits.max
 const timeWindowMs     = mediaLimits.timeWindowMs !== undefined ? mediaLimits.timeWindowMs : 5000;
 const hammingThreshold = mediaLimits.hammingThreshold !== undefined ? mediaLimits.hammingThreshold : 10;
 const timeoutEnabled   = mediaLimits.timeoutEnabled !== undefined ? mediaLimits.timeoutEnabled : true; // 🌟 NEW PARAM
+const autoBlacklistEnabled = mediaLimits.autoBlacklistEnabled !== undefined ? mediaLimits.autoBlacklistEnabled : true; // 🌟 NEW PARAM
 const timeoutDays      = mediaLimits.timeoutDays !== undefined ? mediaLimits.timeoutDays : 1;
 const modChannelId     = mediaLimits.modChannelId || "";
 
@@ -142,11 +143,13 @@ module.exports = {
             if (totalPostsInWindow > maxDuplicates || uniquelyTargetedChannels.size > maxChannels) {
                 
                 const exactCheck = await conn.query('SELECT media_id FROM blacklisted_media WHERE image_hash = ?', [currentImageHash]);
-                if (exactCheck.length === 0) {
-                    await conn.query(
-                        `INSERT INTO blacklisted_media (image_hash, added_by_type, spammer_username, spammer_id) VALUES (?, 'AUTOMATED', ?, ?)`,
-                        [currentImageHash, message.author.username, message.author.id]
-                    );
+                if (autoBlacklistEnabled) {
+                    if (exactCheck.length === 0) {
+                        await conn.query(
+                            `INSERT INTO blacklisted_media (image_hash, added_by_type, spammer_username, spammer_id) VALUES (?, 'AUTOMATED', ?, ?)`,
+                            [currentImageHash, message.author.username, message.author.id]
+                        );
+                    }
                 }
 
                 // Compile audit summary dynamically based on whether active punishments are toggled on

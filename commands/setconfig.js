@@ -23,6 +23,10 @@ module.exports = {
             option.setName('timeout_enabled')
                 .setDescription('Whether the bot should actively timeout the spamming user')
                 .setRequired(false))
+        .addBooleanOption(option =>
+            option.setName('auto_blacklist_enabled')
+                .setDescription('Whether the bot should automatically blacklist spam images')
+                .setRequired(false))
         .addIntegerOption(option => 
             option.setName('timeout_days')
                 .setDescription('Number of days to communication timeout the spammer')
@@ -55,6 +59,7 @@ module.exports = {
                 timeWindowMs: 5000,
                 hammingThreshold: 10,
                 timeoutEnabled: true,
+                autoBlacklistEnabled: true,
                 timeoutDays: 1,
                 modChannelId: ""
             };
@@ -64,6 +69,7 @@ module.exports = {
         const maxChannels = interaction.options.getInteger('max_channels');
         const timeWindowMs = interaction.options.getInteger('time_window_ms');
         const timeoutEnabled = interaction.options.getBoolean('timeout_enabled');
+        const autoBlacklistEnabled = interaction.options.getBoolean('auto_blacklist_enabled');
         const timeoutDays = interaction.options.getInteger('timeout_days');
         const modChannel = interaction.options.getChannel('mod_channel');
 
@@ -84,6 +90,10 @@ module.exports = {
         if (timeoutEnabled !== null) {
             currentConfig.mediaRateLimit.timeoutEnabled = timeoutEnabled;
             changesApplied.push(`Timeout Action Enabled ➔ \`${timeoutEnabled}\``);
+        }
+        if (autoBlacklistEnabled !== null) {
+            currentConfig.mediaRateLimit.autoBlacklistEnabled = autoBlacklistEnabled;
+            changesApplied.push(`Auto-Blacklist Enabled ➔ \`${autoBlacklistEnabled}\``);
         }
         if (timeoutDays !== null) {
             currentConfig.mediaRateLimit.timeoutDays = timeoutDays;

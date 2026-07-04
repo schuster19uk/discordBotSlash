@@ -7,6 +7,7 @@
     "timeoutDays": 1,
     "modChannelId": "1520075865373933688",
     "timeoutEnabled": false,
+    "autoBlacklistEnabled": false,
     "modChannelIdDev": "1497645563238289549",
     "modChannelIdProd": "1520075865373933688"
   }

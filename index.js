@@ -82,12 +82,12 @@ app.get('/api/user-by-username', async (req, res) => {
             displayName: member.displayName 
         });
     } else {
-        //return res.status(404).json({ error: "No user found with that exact username in this server" });
-        return res.json({ 
-            id: 0, 
-            username: cleanUsername,
-            displayName: "username not found in server" 
-        });
+        return res.status(404).json({ error: "No user found with that exact username in this server" });
+        // return res.json({ 
+        //     id: 0, 
+        //     username: cleanUsername,
+        //     displayName: "username not found in server" 
+        // });
     }
 });
 
