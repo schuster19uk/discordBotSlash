@@ -94,11 +94,12 @@ module.exports = {
         const imageAttachment = message.attachments.find(att => 
             /\.(jpg|jpeg|png|webp)$/i.test(att.name)
         );
-
+        console.info(`Found attachment: ${imageAttachment ? imageAttachment.name : 'NONE'}`);
         if (!imageAttachment) return;
 
         let conn;
         try {
+            console.info('Attempting to download and hash image...');
             const response = await axios.get(imageAttachment.url, { responseType: 'arraybuffer' });
             const imageBuffer = Buffer.from(response.data);
             const currentImageHash = await imghash.hash(imageBuffer, 8, 'hex');
@@ -106,6 +107,7 @@ module.exports = {
             // ==========================================
             // OPTION 1: GLOBAL DATABASE BLOCKLIST CHECK
             // ==========================================
+            console.info('Connecting to MariaDB database...');
             conn = await pool.getConnection();
             const blacklistedRecords = await conn.query('SELECT image_hash FROM blacklisted_media');
             console.info('messageCreate image stuff');
