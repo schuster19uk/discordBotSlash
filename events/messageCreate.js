@@ -85,6 +85,17 @@ async function sendModIncidentLog(client, user, channel, imageBuffer, fileName, 
 module.exports = {
     name: 'messageCreate',
     async execute(message, client) {
+
+        // 🌟 REPAIR THE HOLLOW OBJECT IF IT IS A PARTIAL:
+        if (message.partial) {
+            try {
+                await message.fetch();
+            } catch (error) {
+                console.error('Something went wrong when fetching the partial message data:', error);
+                return;
+            }
+        }
+
         console.info('messageCreate event triggered');
         if (message.author.bot || !message.guild || !message.member) return;
         // if (message.member.permissions.has('Administrator')) return;

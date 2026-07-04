@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, Partials } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
@@ -10,7 +10,8 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,      
         GatewayIntentBits.MessageContent,   
         GatewayIntentBits.GuildMembers,
-    ]
+    ],
+    partials: [Partials.Message, Partials.Channel, Partials.Reaction] // 🌟 FORCES DISCORD TO SEND HOLLOW DATA RATHER THAN DROPPING IT
 });
 
 client.commands = new Collection();
