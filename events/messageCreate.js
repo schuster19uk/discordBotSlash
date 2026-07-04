@@ -127,7 +127,7 @@ module.exports = {
             // ==========================================
             // OPTION 1: GLOBAL DATABASE BLOCKLIST CHECK
             // ==========================================
-console.info('Connecting to MariaDB database...');
+            console.info('Connecting to MariaDB database...');
             conn = await pool.getConnection();
             
             console.info('Querying blacklisted_media table...');
@@ -173,8 +173,57 @@ console.info('Connecting to MariaDB database...');
             const uniquelyTargetedChannels = new Set(trackingPayload.history.map(item => item.channelId));
             const totalPostsInWindow = trackingPayload.history.length;
 
+            // if (totalPostsInWindow > maxDuplicates || uniquelyTargetedChannels.size > maxChannels) {
+            //     console.info('multi-channel speed trap triggered');
+            //     const exactCheck = await conn.query('SELECT media_id FROM blacklisted_media WHERE image_hash = ?', [currentImageHash]);
+            //     if (autoBlacklistEnabled) {
+            //         if (exactCheck.length === 0) {
+            //             await conn.query(
+            //                 `INSERT INTO blacklisted_media (image_hash, added_by_type, spammer_username, spammer_id) VALUES (?, 'AUTOMATED', ?, ?)`,
+            //                 [currentImageHash, message.author.username, message.author.id]
+            //             );
+            //         }
+            //     }
+
+            //     // Compile audit summary dynamically based on whether active punishments are toggled on
+            //     const penaltyStatusText = timeoutEnabled 
+            //         ? `🤐 Issued timeout penalty for **${daysConfigured} day(s)**.` 
+            //         : `🛡️ Timeout skipped (Action disabled in config).`;
+
+            //     const actionTakenNotes = `⏳ Auto-blacklisted hash.\n🧹 Bulk-deleted messages across **${uniquelyTargetedChannels.size} channels**.\n${penaltyStatusText}`;
+                
+            //     await sendModIncidentLog(
+            //         client, message.author, message.channel, imageBuffer, imageAttachment.name, currentImageHash, 'MULTI-CHANNEL MEDIA RAID', actionTakenNotes
+            //     );
+
+            //     // Purge messages
+            //     for (const entry of trackingPayload.history) {
+            //         try {
+            //             const targetChan = await message.guild.channels.fetch(entry.channelId);
+            //             if (targetChan) {
+            //                 const targetMsg = await targetChan.messages.fetch(entry.messageId);
+            //                 if (targetMsg) await targetMsg.delete().catch(() => {});
+            //             }
+            //         } catch (e) {}
+            //     }
+
+            //     globalSpeedTrapTracker.delete(trackingKey);
+
+            //     // 🌟 EXECUTE TIMEOUT CONDITIONALLY 🌟
+            //     if (timeoutEnabled) {
+            //         if (message.member.moderatable) {
+            //             await message.member.timeout(TIMEOUT_DURATION_MS, 'Automated Multi-Channel Media Spam Portal: Exceeded distribution limits.');
+            //             const timeLabel = daysConfigured === 1 ? '1 day' : `${daysConfigured} days`;
+            //             await message.channel.send(`🚨 **${message.author.username}** has been timed out for ${timeLabel} due to cross-channel media spamming.`);
+            //         }
+            //     }
+                
+            //     return;
+            // }
+
             if (totalPostsInWindow > maxDuplicates || uniquelyTargetedChannels.size > maxChannels) {
-                console.info('multi-channel speed trap triggered');
+                console.info('🚨 MULTI-CHANNEL SPEED TRAP ENGAGED: Executing mass purge superpowers...');
+                
                 const exactCheck = await conn.query('SELECT media_id FROM blacklisted_media WHERE image_hash = ?', [currentImageHash]);
                 if (autoBlacklistEnabled) {
                     if (exactCheck.length === 0) {
@@ -185,31 +234,47 @@ console.info('Connecting to MariaDB database...');
                     }
                 }
 
-                // Compile audit summary dynamically based on whether active punishments are toggled on
                 const penaltyStatusText = timeoutEnabled 
                     ? `🤐 Issued timeout penalty for **${daysConfigured} day(s)**.` 
                     : `🛡️ Timeout skipped (Action disabled in config).`;
 
-                const actionTakenNotes = `⏳ Auto-blacklisted hash.\n🧹 Bulk-deleted messages across **${uniquelyTargetedChannels.size} channels**.\n${penaltyStatusText}`;
+                const actionTakenNotes = `⏳ Auto-blacklisted hash.\n🧹 Bulk-deleted messages across **${uniquelyTargetedChannels.size} channels** via Admin Override.\n${penaltyStatusText}`;
                 
                 await sendModIncidentLog(
                     client, message.author, message.channel, imageBuffer, imageAttachment.name, currentImageHash, 'MULTI-CHANNEL MEDIA RAID', actionTakenNotes
                 );
 
-                // Purge messages
+                // 🌟 SUPERPOWER BULK PURGE: Group message IDs by channel to wipe them instantly
+                const channelGroups = {};
                 for (const entry of trackingPayload.history) {
+                    if (!channelGroups[entry.channelId]) {
+                        channelGroups[entry.channelId] = [];
+                    }
+                    channelGroups[entry.channelId].push(entry.messageId);
+                }
+
+                // Execute absolute mass wipe across all channels simultaneously
+                for (const [chanId, messageIds] of Object.entries(channelGroups)) {
                     try {
-                        const targetChan = await message.guild.channels.fetch(entry.channelId);
-                        if (targetChan) {
-                            const targetMsg = await targetChan.messages.fetch(entry.messageId);
-                            if (targetMsg) await targetMsg.delete().catch(() => {});
+                        const targetChan = await message.guild.channels.fetch(chanId);
+                        if (targetChan && typeof targetChan.bulkDelete === 'function') {
+                            // Wipes all gathered spam messages in this channel in ONE single call!
+                            await targetChan.bulkDelete(messageIds, true).catch(() => {});
+                        } else if (targetChan) {
+                            // Fallback for DM or threads where bulkDelete isn't available
+                            for (const msgId of messageIds) {
+                                const targetMsg = await targetChan.messages.fetch(msgId).catch(() => null);
+                                if (targetMsg) await targetMsg.delete().catch(() => {});
+                            }
                         }
-                    } catch (e) {}
+                    } catch (e) {
+                        console.error(`Failed executing mass override purge on channel ${chanId}:`, e);
+                    }
                 }
 
                 globalSpeedTrapTracker.delete(trackingKey);
 
-                // 🌟 EXECUTE TIMEOUT CONDITIONALLY 🌟
+                // TIMEOUT CONDITIONALLY
                 if (timeoutEnabled) {
                     if (message.member.moderatable) {
                         await message.member.timeout(TIMEOUT_DURATION_MS, 'Automated Multi-Channel Media Spam Portal: Exceeded distribution limits.');
