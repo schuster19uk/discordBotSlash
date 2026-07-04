@@ -112,27 +112,37 @@ module.exports = {
             // ==========================================
             // OPTION 1: GLOBAL DATABASE BLOCKLIST CHECK
             // ==========================================
-            console.info('Connecting to MariaDB database...');
+console.info('Connecting to MariaDB database...');
             conn = await pool.getConnection();
-            const blacklistedRecords = await conn.query('SELECT image_hash FROM blacklisted_media');
-            console.info('messageCreate image stuff');
+            
+            console.info('Querying blacklisted_media table...');
+            // Fallback to empty array if result is undefined
+            const rawRecords = await conn.query('SELECT image_hash FROM blacklisted_media');
+            const blacklistedRecords = rawRecords || []; 
+            
+            console.info(`Database response received. Total blocked items found: ${blacklistedRecords.length}`);
+            
             let isGloballyBanned = false;
-            for (const record of blacklistedRecords) {
-                const distance = getHammingDistance(currentImageHash, record.image_hash);
-                if (distance <= hammingThreshold) {
-                    isGloballyBanned = true;
-                    break;
+            if (blacklistedRecords.length > 0) {
+                for (const record of blacklistedRecords) {
+                    if (!record.image_hash) continue; // Skip malformed rows
+                    const distance = getHammingDistance(currentImageHash, record.image_hash);
+                    if (distance <= hammingThreshold) {
+                        isGloballyBanned = true;
+                        break;
+                    }
                 }
             }
 
             if (isGloballyBanned) {
+                console.info('🎯 Match found in Global Blocklist! Deleting message...');
                 await sendModIncidentLog(
                     client, message.author, message.channel, imageBuffer, imageAttachment.name, currentImageHash, 'GLOBAL BLOCKLIST', '🗑️ Auto-deleted matching message entry.'
                 );
-                await message.delete().catch(() => {});
+                await message.delete().catch(err => console.error("❌ Failed to delete globally banned message:", err));
                 return; 
             }
-            console.info('globally banned check complete');
+            console.info('✅ Globally banned check complete (No matches found). Proceeding to Speed Trap...');
 
             // ==========================================
             // OPTION 2: MULTI-CHANNEL SPEED TRAP
