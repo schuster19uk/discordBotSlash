@@ -173,54 +173,6 @@ module.exports = {
             const uniquelyTargetedChannels = new Set(trackingPayload.history.map(item => item.channelId));
             const totalPostsInWindow = trackingPayload.history.length;
 
-            // if (totalPostsInWindow > maxDuplicates || uniquelyTargetedChannels.size > maxChannels) {
-            //     console.info('multi-channel speed trap triggered');
-            //     const exactCheck = await conn.query('SELECT media_id FROM blacklisted_media WHERE image_hash = ?', [currentImageHash]);
-            //     if (autoBlacklistEnabled) {
-            //         if (exactCheck.length === 0) {
-            //             await conn.query(
-            //                 `INSERT INTO blacklisted_media (image_hash, added_by_type, spammer_username, spammer_id) VALUES (?, 'AUTOMATED', ?, ?)`,
-            //                 [currentImageHash, message.author.username, message.author.id]
-            //             );
-            //         }
-            //     }
-
-            //     // Compile audit summary dynamically based on whether active punishments are toggled on
-            //     const penaltyStatusText = timeoutEnabled 
-            //         ? `🤐 Issued timeout penalty for **${daysConfigured} day(s)**.` 
-            //         : `🛡️ Timeout skipped (Action disabled in config).`;
-
-            //     const actionTakenNotes = `⏳ Auto-blacklisted hash.\n🧹 Bulk-deleted messages across **${uniquelyTargetedChannels.size} channels**.\n${penaltyStatusText}`;
-                
-            //     await sendModIncidentLog(
-            //         client, message.author, message.channel, imageBuffer, imageAttachment.name, currentImageHash, 'MULTI-CHANNEL MEDIA RAID', actionTakenNotes
-            //     );
-
-            //     // Purge messages
-            //     for (const entry of trackingPayload.history) {
-            //         try {
-            //             const targetChan = await message.guild.channels.fetch(entry.channelId);
-            //             if (targetChan) {
-            //                 const targetMsg = await targetChan.messages.fetch(entry.messageId);
-            //                 if (targetMsg) await targetMsg.delete().catch(() => {});
-            //             }
-            //         } catch (e) {}
-            //     }
-
-            //     globalSpeedTrapTracker.delete(trackingKey);
-
-            //     // 🌟 EXECUTE TIMEOUT CONDITIONALLY 🌟
-            //     if (timeoutEnabled) {
-            //         if (message.member.moderatable) {
-            //             await message.member.timeout(TIMEOUT_DURATION_MS, 'Automated Multi-Channel Media Spam Portal: Exceeded distribution limits.');
-            //             const timeLabel = daysConfigured === 1 ? '1 day' : `${daysConfigured} days`;
-            //             await message.channel.send(`🚨 **${message.author.username}** has been timed out for ${timeLabel} due to cross-channel media spamming.`);
-            //         }
-            //     }
-                
-            //     return;
-            // }
-
             if (totalPostsInWindow > maxDuplicates || uniquelyTargetedChannels.size > maxChannels) {
                 console.info('🚨 MULTI-CHANNEL SPEED TRAP ENGAGED: Executing mass purge superpowers...');
                 
