@@ -26,7 +26,7 @@ module.exports = {
         try {
             const response = await axios.get(attachment.url, { responseType: 'arraybuffer' });
             const imageBuffer = Buffer.from(response.data);
-            const generatedHash = await imghash.hash(imageBuffer, 8, 'hex');
+            const generatedHash = await imghash.hash(imageBuffer, 16, 'hex');
 
             conn = await pool.getConnection();
             

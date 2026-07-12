@@ -1,4 +1,5 @@
 // events/messageCreate.js
+// new messageCreate with better multi-channel spam detection and global blocklist checks
 const { EmbedBuilder, AttachmentBuilder, MessageFlags } = require('discord.js');
 const imghash = require('imghash');
 const axios = require('axios');
@@ -22,7 +23,11 @@ const mediaLimits = rawConfig.mediaRateLimit || {};
 const maxDuplicates    = mediaLimits.maxDuplicates !== undefined ? mediaLimits.maxDuplicates : 2;
 const maxChannels      = mediaLimits.maxChannels !== undefined ? mediaLimits.maxChannels : 2;
 const timeWindowMs     = mediaLimits.timeWindowMs !== undefined ? mediaLimits.timeWindowMs : 5000;
-const hammingThreshold = mediaLimits.hammingThreshold !== undefined ? mediaLimits.hammingThreshold : 10;
+// NOTE: threshold scale changed when pHash grid size went from 8x8 (64 bits)
+// to 16x16 (256 bits). Old default of 10 was tuned for 64-bit hashes;
+// 40 is the equivalent starting point for 256-bit hashes (~15% difference).
+// Retune based on real false-positive/negative data once live.
+const hammingThreshold = mediaLimits.hammingThreshold !== undefined ? mediaLimits.hammingThreshold : 40;
 const timeoutEnabled   = mediaLimits.timeoutEnabled !== undefined ? mediaLimits.timeoutEnabled : true; // 🌟 NEW PARAM
 const autoBlacklistEnabled = mediaLimits.autoBlacklistEnabled !== undefined ? mediaLimits.autoBlacklistEnabled : true; // 🌟 NEW PARAM
 const timeoutDays      = mediaLimits.timeoutDays !== undefined ? mediaLimits.timeoutDays : 1;
@@ -33,7 +38,36 @@ const TIMEOUT_DURATION_MS = daysConfigured * 24 * 60 * 60 * 1000;
 
 const globalSpeedTrapTracker = new Map();
 
+// In-memory cache of the blocklist. Querying the entire blacklisted_media
+// table on every single image message doesn't scale as the table grows.
+// Instead we cache it and refresh periodically, plus force-refresh
+// immediately after we add a new hash ourselves (see `dirty` flag below).
+const BLACKLIST_CACHE_TTL_MS = 60 * 1000; // refresh at most once a minute
+const blacklistCache = {
+    data: [],       // array of { image_hash }
+    lastFetched: 0,
+    dirty: true,    // true forces a refresh on next lookup
+};
+
+async function getBlacklistedHashes(conn) {
+    const isStale = Date.now() - blacklistCache.lastFetched > BLACKLIST_CACHE_TTL_MS;
+    if (blacklistCache.dirty || isStale) {
+        const rawRecords = await conn.query('SELECT image_hash FROM blacklisted_media');
+        blacklistCache.data = rawRecords || [];
+        blacklistCache.lastFetched = Date.now();
+        blacklistCache.dirty = false;
+        console.info(`🔄 Blocklist cache refreshed. ${blacklistCache.data.length} entries loaded.`);
+    }
+    return blacklistCache.data;
+}
+
 function getHammingDistance(hash1, hash2) {
+    if (!hash1 || !hash2 || hash1.length !== hash2.length) {
+        // Mismatched lengths happen if old (8x8) and new (16x16) hashes
+        // are ever compared during a migration transition. Treat as
+        // "no match" rather than producing a meaningless distance.
+        return Infinity;
+    }
     let distance = 0;
     for (let i = 0; i < hash1.length; i++) {
         const val1 = parseInt(hash1[i], 16);
@@ -122,7 +156,7 @@ module.exports = {
             console.info('Attempting to download and hash image...');
             const response = await axios.get(imageAttachment.url, { responseType: 'arraybuffer' });
             const imageBuffer = Buffer.from(response.data);
-            const currentImageHash = await imghash.hash(imageBuffer, 8, 'hex');
+            const currentImageHash = await imghash.hash(imageBuffer, 16, 'hex');
 
             // ==========================================
             // OPTION 1: GLOBAL DATABASE BLOCKLIST CHECK
@@ -130,12 +164,10 @@ module.exports = {
             console.info('Connecting to MariaDB database...');
             conn = await pool.getConnection();
             
-            console.info('Querying blacklisted_media table...');
-            // Fallback to empty array if result is undefined
-            const rawRecords = await conn.query('SELECT image_hash FROM blacklisted_media');
-            const blacklistedRecords = rawRecords || []; 
-            
-            console.info(`Database response received. Total blocked items found: ${blacklistedRecords.length}`);
+            console.info('Fetching blacklisted hashes (cached)...');
+            const blacklistedRecords = await getBlacklistedHashes(conn);
+
+            console.info(`Blocklist lookup complete. Total blocked items in cache: ${blacklistedRecords.length}`);
             
             let isGloballyBanned = false;
             if (blacklistedRecords.length > 0) {
@@ -176,13 +208,22 @@ module.exports = {
             if (totalPostsInWindow > maxDuplicates || uniquelyTargetedChannels.size > maxChannels) {
                 console.info('🚨 MULTI-CHANNEL SPEED TRAP ENGAGED: Executing mass purge superpowers...');
                 
-                const exactCheck = await conn.query('SELECT media_id FROM blacklisted_media WHERE image_hash = ?', [currentImageHash]);
                 if (autoBlacklistEnabled) {
-                    if (exactCheck.length === 0) {
+                    try {
                         await conn.query(
                             `INSERT INTO blacklisted_media (image_hash, added_by_type, spammer_username, spammer_id) VALUES (?, 'AUTOMATED', ?, ?)`,
                             [currentImageHash, message.author.username, message.author.id]
                         );
+                        // New hash added — invalidate the in-memory cache so
+                        // the next lookup picks it up immediately.
+                        blacklistCache.dirty = true;
+                    } catch (insertErr) {
+                        // ER_DUP_ENTRY (1062): another concurrent request already
+                        // inserted this exact hash first. That's fine — the hash
+                        // is blacklisted either way, so just continue.
+                        if (insertErr.code !== 'ER_DUP_ENTRY' && insertErr.errno !== 1062) {
+                            throw insertErr;
+                        }
                     }
                 }
 
