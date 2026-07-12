@@ -54,4 +54,35 @@ CREATE TABLE blacklisted_media (
 
 
 
+-- Migration: widen image_hash for 16x16 pHash (256 bits = 64 hex chars)
+--            and add UNIQUE constraint to prevent race-condition duplicates.
+--
+-- IMPORTANT: existing rows were hashed with an 8x8 pHash (16 hex chars).
+-- Widening the column does NOT retroactively re-hash them. Old rows will
+-- simply never match new 64-char hashes via Hamming distance (mismatched
+-- lengths -> treated as no-match, see getHammingDistance change below).
+-- Effectively this migration resets your blocklist going forward.
+-- If you want old entries to keep working, see the backfill note at the
+-- bottom of this file.
+ 
+ALTER TABLE blacklisted_media
+    MODIFY COLUMN image_hash VARCHAR(64) NOT NULL;
+ 
+-- Prevents two near-simultaneous INSERTs of the same hash from both
+-- succeeding (the old check-then-insert pattern in code had a race window).
+ALTER TABLE blacklisted_media
+    ADD UNIQUE KEY unique_image_hash (image_hash);
+ 
+-- ---------------------------------------------------------------------
+-- OPTIONAL: if you want to preserve old 8x8-hash entries rather than
+-- losing them, the only correct way is to re-download and re-hash the
+-- original images with the new 16x16 algorithm. There is no way to
+-- mathematically upconvert an 8x8 hash into a 16x16 one after the fact.
+-- If you don't have the original images archived, old entries are
+-- effectively retired by this migration (they'll stay in the table but
+-- will never match anything again).
+-- ---------------------------------------------------------------------
+
+
+
 
