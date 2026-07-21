@@ -19,13 +19,13 @@ module.exports = {
 
             // --- CONFIGURATION ---
             const applyDateFilter = true; // Set to false to add 30 days from now
-            const filterStartDate = DateTime.fromISO('2026-06-27T05:30:00', { zone: 'utc' });
+            const filterStartDate = DateTime.fromISO('2026-07-31T05:30:00', { zone: 'utc' });
             // ---------------------
 
             const schedule = {
                 1: [], // Mon
-                2: [ ], // Tue
-                3: [ ],  // Wed
+                2: [], // Tue
+                3: [],  // Wed
                 4: ["10:30", "12:00", "13:00", "14:00", "17:00" , "18:00" , "19:00"], // Thu
                 5: ["10:30" , "12:00", "13:30"], // Fri
                 6: [], // Sat
@@ -40,12 +40,12 @@ module.exports = {
                 // Start from the filter date (converted to Nevada time so dayOfWeek matches local schedules)
                 currentLoopDate = filterStartDate.setZone('America/Los_Angeles');
                 // End exactly 30 days after the filter date
-                endDate = currentLoopDate.plus({ days: 30 });
+                endDate = currentLoopDate.plus({ days: 31 });
             } else {
                 // Start from tomorrow morning in Nevada time
                 currentLoopDate = DateTime.now().setZone('America/Los_Angeles').plus({ days: 1 });
                 // End exactly 30 days from now
-                endDate = currentLoopDate.plus({ days: 30 });
+                endDate = currentLoopDate.plus({ days: 31 });
             }
 
             // 2. Loop day-by-day until we reach the calculated endDate
