@@ -35,6 +35,28 @@ module.exports = async (interaction, client) => {
 
         // 1. BOOKING LOGIC
         if (isBooking) {
+
+            const [lastSlot] = await conn.query(
+                `SELECT start_time FROM booking_slots 
+                WHERE booked_by_id = ? AND start_time < UTC_TIMESTAMP() 
+                ORDER BY start_time DESC LIMIT 1`,
+                [interaction.user.id]
+            );
+
+            // New users (no lastSlot) can always book.
+            // Returning users can only book if their last slot was 2+ weeks ago.
+            if (lastSlot) {
+                const lastStart = DateTime.fromJSDate(new Date(lastSlot.start_time), { zone: 'utc' });
+                const weeksSinceLast = DateTime.now().toUTC().diff(lastStart, 'weeks').weeks;
+
+                if (weeksSinceLast < 2) {
+                    return await interaction.followUp({
+                        content: "🚫 You can only book a new lesson once 2 weeks have passed since your last one.",
+                        flags: [MessageFlags.Ephemeral]
+                    });
+                }
+            }
+
             const [slot] = await conn.query(
                 `SELECT start_time, is_available FROM booking_slots WHERE slot_id = ?`, [slotId]
             );
@@ -42,6 +64,8 @@ module.exports = async (interaction, client) => {
             if (!slot || !slot.is_available) {
                 return await interaction.followUp({ content: "⚠️ This slot is no longer available.", flags: [MessageFlags.Ephemeral] });
             }
+
+
 
             await conn.query(
                 `UPDATE booking_slots SET booked_by_id = ?, booked_by_name = ?, is_available = FALSE WHERE slot_id = ?`,
