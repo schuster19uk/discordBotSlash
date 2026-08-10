@@ -35,37 +35,42 @@ module.exports = async (interaction, client) => {
 
         // 1. BOOKING LOGIC
         if (isBooking) {
-
-            const [lastSlot] = await conn.query(
-                `SELECT start_time FROM booking_slots 
-                WHERE booked_by_id = ? AND start_time < UTC_TIMESTAMP() 
-                ORDER BY start_time DESC LIMIT 1`,
-                [interaction.user.id]
-            );
-
-            // New users (no lastSlot) can always book.
-            // Returning users can only book if their last slot was 2+ weeks ago.
-            if (lastSlot) {
-                const lastStart = DateTime.fromJSDate(new Date(lastSlot.start_time), { zone: 'utc' });
-                const weeksSinceLast = DateTime.now().toUTC().diff(lastStart, 'weeks').weeks;
-
-                if (weeksSinceLast < 2) {
-                    return await interaction.followUp({
-                        content: "🚫 You can only book a new lesson once 2 weeks have passed since your last one.",
-                        flags: [MessageFlags.Ephemeral]
-                    });
-                }
-            }
-
+            // Fetch the slot being requested first
             const [slot] = await conn.query(
                 `SELECT start_time, is_available FROM booking_slots WHERE slot_id = ?`, [slotId]
             );
 
             if (!slot || !slot.is_available) {
-                return await interaction.followUp({ content: "⚠️ This slot is no longer available.", flags: [MessageFlags.Ephemeral] });
+                return await interaction.followUp({ 
+                    content: "⚠️ This slot is no longer available.", 
+                    flags: [MessageFlags.Ephemeral] 
+                });
             }
 
+            const ADDPERIODCONSTRAINT = process.env.ADDPERIODCONSTRAINT;
+            if (ADDPERIODCONSTRAINT === 'true') {
+                // Fetch the user's most recent booked slot prior to this new slot
+                const [lastSlot] = await conn.query(
+                    `SELECT start_time FROM booking_slots 
+                    WHERE booked_by_id = ? AND start_time < ? 
+                    ORDER BY start_time DESC LIMIT 1`,
+                    [interaction.user.id, slot.start_time]
+                );
 
+                if (lastSlot) {
+                    const targetStart = DateTime.fromJSDate(new Date(slot.start_time), { zone: 'utc' });
+                    const lastStart = DateTime.fromJSDate(new Date(lastSlot.start_time), { zone: 'utc' });
+
+                    const daysBetween = targetStart.diff(lastStart, 'days').days;
+
+                    if (daysBetween < 14) {
+                        return await interaction.followUp({
+                            content: "🚫 You must wait at least 14 days after your previous lesson to book this slot.",
+                            flags: [MessageFlags.Ephemeral]
+                        });
+                    }
+                }
+            }
 
             await conn.query(
                 `UPDATE booking_slots SET booked_by_id = ?, booked_by_name = ?, is_available = FALSE WHERE slot_id = ?`,
@@ -77,10 +82,8 @@ module.exports = async (interaction, client) => {
                 content: `✅ **Booking Confirmed!**\n📅 **Date:** <t:${unixTime}:F> (60 min)`,
                 components: []
             });
-
+        }
         // 2. CANCELLATION LOGIC
-        } 
-        
         else if (isCancelling) {
             const [slot] = await conn.query(`SELECT start_time FROM booking_slots WHERE slot_id = ? AND is_available = FALSE`, [slotId]);
             if (!slot) return;
