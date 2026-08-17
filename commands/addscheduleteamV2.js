@@ -19,16 +19,16 @@ module.exports = {
 
             // --- CONFIGURATION ---
             const applyDateFilter = true; // Set to false to add 30 days from now
-            const filterStartDate = DateTime.fromISO('2026-07-31T05:30:00', { zone: 'utc' });
+            const filterStartDate = DateTime.fromISO('2026-09-01T00:00:00', { zone: 'utc' });
             // ---------------------
 
             const schedule = {
                 1: [], // Mon
                 2: ["08:00", "09:00"], // Tue
                 3: ["08:00", "09:00"],  // Wed
-                4: [], // Thu
+                4: ["08:00", "09:00"], // Thu
                 5: ["08:00", "09:00"], // Fri
-                6: [], // Sat
+                6: ["08:00", "09:00"], // Sat
                 7: ["08:00", "09:00", "10:00", "11:00","12:00","13:00","14:00","15:00"] // Sun
             };
 
