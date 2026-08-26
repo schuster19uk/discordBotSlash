@@ -21,6 +21,7 @@
   "dependencies": {
     "@discordjs/builders": "^1.14.1",
     "@discordjs/rest": "^2.6.1",
+    "archiver": "^8.0.0",
     "axios": "^1.18.1",
     "discord-api-types": "^0.38.50",
     "discord.js": "^14.26.3",
