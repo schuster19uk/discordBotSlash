@@ -2,7 +2,8 @@ const { SlashCommandBuilder, AttachmentBuilder } = require('discord.js');
 const fs = require('node:fs/promises');
 const { createWriteStream } = require('node:fs');
 const path = require('node:path');
-const archiver = require('archiver');
+const archiverModule = require('archiver');
+const archiver = archiverModule.default || archiverModule;
 
 const OUTPUT_ROOT = path.join(__dirname, '..', 'avatars');
 
