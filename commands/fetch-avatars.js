@@ -15,16 +15,46 @@ function safeFolderName(name) {
     return cleaned || 'unknown';
 }
 
+// Normalize whitespace: collapse tabs/non-breaking spaces/multiple spaces
+// down to single regular spaces, then trim the ends.
+function normalizeWhitespace(str) {
+    return str
+        .replace(/[\u00A0\u2000-\u200B\u202F\uFEFF]/g, ' ') // NBSP & other unicode spaces
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+// Strips ALL whitespace, used as a fallback match key so a username that
+// picked up a stray internal space (e.g. from copy-paste) can still match.
+function stripAllSpaces(str) {
+    return str.replace(/\s+/g, '');
+}
+
 function parseUsernames(text) {
-    return new Set(
-        text
-            .split(/\r?\n/)
-            .map((line) => line.trim().toLowerCase())
-            // Strip trailing " - Displayed ..." notes and leading "@" that
-            // sometimes creep into pasted lists, keeping just the handle.
-            .map((line) => line.replace(/^@/, '').split(/\s+-\s+/)[0])
-            .filter(Boolean)
-    );
+    const raw = text
+        .split(/\r?\n/)
+        .map((line) => normalizeWhitespace(line).toLowerCase())
+        // Strip trailing " - Displayed ..." notes and leading "@" that
+        // sometimes creep into pasted lists, keeping just the handle.
+        .map((line) => line.replace(/^@/, '').split(/\s+-\s+/)[0])
+        .map((line) => normalizeWhitespace(line))
+        .filter(Boolean);
+
+    const usernames = new Set(raw);
+
+    // Fallback lookup: strip ALL spaces so a username that picked up a
+    // stray internal space (e.g. "che msed" instead of "chemsed") can
+    // still be matched. Maps stripped-form -> original list entries.
+    const noSpaceToOriginal = new Map();
+    for (const entry of raw) {
+        const stripped = stripAllSpaces(entry);
+        if (!noSpaceToOriginal.has(stripped)) {
+            noSpaceToOriginal.set(stripped, []);
+        }
+        noSpaceToOriginal.get(stripped).push(entry);
+    }
+
+    return { usernames, noSpaceToOriginal };
 }
 
 async function zipDirectory(sourceDir, outPath) {
@@ -67,7 +97,7 @@ module.exports = {
                 return interaction.editReply('❌ Could not download the attached file.');
             }
             const text = await fileResponse.text();
-            const usernames = parseUsernames(text);
+            const { usernames, noSpaceToOriginal } = parseUsernames(text);
 
             if (usernames.size === 0) {
                 return interaction.editReply('❌ That file did not contain any usernames.');
@@ -87,10 +117,32 @@ module.exports = {
             const downloadFailures = []; // { username, id, status }
 
             for (const member of members.values()) {
-                const username = member.user.username.toLowerCase();
-                if (!usernames.has(username)) continue;
+                const username = normalizeWhitespace(member.user.username).toLowerCase();
+                const displayName = normalizeWhitespace(member.displayName).toLowerCase();
 
-                found.add(username);
+                let matchedEntries = [];
+
+                if (usernames.has(username)) {
+                    matchedEntries = [username];
+                } else if (usernames.has(displayName)) {
+                    matchedEntries = [displayName];
+                } else {
+                    // Fallback: match ignoring internal spaces, in case the
+                    // list had a stray space inside the name, tried against
+                    // both username and display name.
+                    const strippedUsername = stripAllSpaces(username);
+                    const strippedDisplay = stripAllSpaces(displayName);
+                    if (noSpaceToOriginal.has(strippedUsername)) {
+                        matchedEntries = noSpaceToOriginal.get(strippedUsername);
+                    } else if (noSpaceToOriginal.has(strippedDisplay)) {
+                        matchedEntries = noSpaceToOriginal.get(strippedDisplay);
+                    }
+                }
+
+                if (matchedEntries.length === 0) continue;
+                for (const entry of matchedEntries) {
+                    found.add(entry);
+                }
 
                 const avatarUrl = member.displayAvatarURL({ extension: 'png', size: 256 });
                 const folder = path.join(runDir, safeFolderName(member.user.username));
