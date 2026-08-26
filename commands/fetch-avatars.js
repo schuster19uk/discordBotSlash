@@ -120,26 +120,26 @@ module.exports = {
                 const username = normalizeWhitespace(member.user.username).toLowerCase();
                 const displayName = normalizeWhitespace(member.displayName).toLowerCase();
 
-                let matchedEntries = [];
+                // Collect matches from every strategy (exact + space-stripped
+                // fallback, against both username and display name) instead
+                // of stopping at the first hit — otherwise a duplicate list
+                // entry that only matches via a different strategy never
+                // gets marked as found, even though the avatar was saved.
+                const matchedEntries = new Set();
 
-                if (usernames.has(username)) {
-                    matchedEntries = [username];
-                } else if (usernames.has(displayName)) {
-                    matchedEntries = [displayName];
-                } else {
-                    // Fallback: match ignoring internal spaces, in case the
-                    // list had a stray space inside the name, tried against
-                    // both username and display name.
-                    const strippedUsername = stripAllSpaces(username);
-                    const strippedDisplay = stripAllSpaces(displayName);
-                    if (noSpaceToOriginal.has(strippedUsername)) {
-                        matchedEntries = noSpaceToOriginal.get(strippedUsername);
-                    } else if (noSpaceToOriginal.has(strippedDisplay)) {
-                        matchedEntries = noSpaceToOriginal.get(strippedDisplay);
-                    }
+                if (usernames.has(username)) matchedEntries.add(username);
+                if (usernames.has(displayName)) matchedEntries.add(displayName);
+
+                const strippedUsername = stripAllSpaces(username);
+                const strippedDisplay = stripAllSpaces(displayName);
+                for (const entry of noSpaceToOriginal.get(strippedUsername) || []) {
+                    matchedEntries.add(entry);
+                }
+                for (const entry of noSpaceToOriginal.get(strippedDisplay) || []) {
+                    matchedEntries.add(entry);
                 }
 
-                if (matchedEntries.length === 0) continue;
+                if (matchedEntries.size === 0) continue;
                 for (const entry of matchedEntries) {
                     found.add(entry);
                 }
