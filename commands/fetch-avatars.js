@@ -3,7 +3,7 @@ const fs = require('node:fs/promises');
 const { createWriteStream } = require('node:fs');
 const path = require('node:path');
 const archiverModule = require('archiver');
-const archiver = archiverModule.default || archiverModule;
+const ZipArchive = archiverModule.ZipArchive;
 
 const OUTPUT_ROOT = path.join(__dirname, '..', 'avatars');
 
@@ -30,7 +30,7 @@ function parseUsernames(text) {
 async function zipDirectory(sourceDir, outPath) {
     await new Promise((resolve, reject) => {
         const output = createWriteStream(outPath);
-        const archive = archiver('zip', { zlib: { level: 9 } });
+        const archive = new ZipArchive({ zlib: { level: 9 } });
         output.on('close', resolve);
         archive.on('error', reject);
         archive.pipe(output);
