@@ -1,0 +1,20 @@
+[
+  {
+    "featureName": "Booking Reminders",
+    "description": "Sends 24-hour and 20-minute notification DMs",
+    "type": "feature",
+    "isLive": true
+  },
+  {
+    "featureName": "GIF NSFW Detection & Media Speedtrap",
+    "description": "Scans animated GIFs for explicit content across 5 sampled frames (70% threshold), while actively enforcing a media speedtrap that monitors and flags duplicate media or rapid cross-channel spam within a 50-second window using image hashing.",
+    "type": "feature",
+    "isLive": false
+  },
+  {
+    "featureName": "Spammed Images Fix",
+    "description": "Bot now deletes all banned images within a 50 second window not just the first few",
+    "type": "bug",
+    "isLive": false
+  }
+]

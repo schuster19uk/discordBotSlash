@@ -2,6 +2,10 @@
 // new messageCreate with better multi-channel spam detection and global blocklist checks
 const { EmbedBuilder, AttachmentBuilder, MessageFlags } = require('discord.js');
 const imghash = require('imghash');
+const gifFrames = require('gif-frames');
+const nsfwjs = require('nsfwjs');
+const tf = require('@tensorflow/tfjs');
+const { PNG } = require('pngjs');
 const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
@@ -32,11 +36,15 @@ const timeoutEnabled   = mediaLimits.timeoutEnabled !== undefined ? mediaLimits.
 const autoBlacklistEnabled = mediaLimits.autoBlacklistEnabled !== undefined ? mediaLimits.autoBlacklistEnabled : true; // 🌟 NEW PARAM
 const timeoutDays      = mediaLimits.timeoutDays !== undefined ? mediaLimits.timeoutDays : 1;
 const modChannelId     = mediaLimits.modChannelId || "";
+const gifFrameCount     = Math.max(1, Math.floor(mediaLimits.gifFrameCount !== undefined ? mediaLimits.gifFrameCount : 5));
+const gifSfwCheckEnabled = mediaLimits.gifSfwCheckEnabled !== undefined ? mediaLimits.gifSfwCheckEnabled : true;
+const gifNsfwThreshold  = mediaLimits.gifNsfwThreshold !== undefined ? mediaLimits.gifNsfwThreshold : 0.7;
 
 const daysConfigured = timeoutDays > 0 ? timeoutDays : 1;
 const TIMEOUT_DURATION_MS = daysConfigured * 24 * 60 * 60 * 1000;
 
 const globalSpeedTrapTracker = new Map();
+let nsfwModelPromise;
 
 // In-memory cache of the blocklist. Querying the entire blacklisted_media
 // table on every single image message doesn't scale as the table grows.
@@ -47,6 +55,11 @@ const blacklistCache = {
     data: [],       // array of { image_hash }
     lastFetched: 0,
     dirty: true,    // true forces a refresh on next lookup
+};
+const gifBlacklistCache = {
+    data: [],
+    lastFetched: 0,
+    dirty: true,
 };
 
 async function getBlacklistedHashes(conn) {
@@ -59,6 +72,18 @@ async function getBlacklistedHashes(conn) {
         console.info(`🔄 Blocklist cache refreshed. ${blacklistCache.data.length} entries loaded.`);
     }
     return blacklistCache.data;
+}
+
+async function getBlacklistedGifHashes(conn) {
+    const isStale = Date.now() - gifBlacklistCache.lastFetched > BLACKLIST_CACHE_TTL_MS;
+    if (gifBlacklistCache.dirty || isStale) {
+        const rawRecords = await conn.query('SELECT image_hash FROM gifmedia_blacklist');
+        gifBlacklistCache.data = rawRecords || [];
+        gifBlacklistCache.lastFetched = Date.now();
+        gifBlacklistCache.dirty = false;
+        console.info(`🔄 GIF blocklist cache refreshed. ${gifBlacklistCache.data.length} entries loaded.`);
+    }
+    return gifBlacklistCache.data;
 }
 
 function getHammingDistance(hash1, hash2) {
@@ -79,6 +104,117 @@ function getHammingDistance(hash1, hash2) {
         }
     }
     return distance;
+}
+
+function streamToBuffer(stream) {
+    return new Promise((resolve, reject) => {
+        const chunks = [];
+        stream.on('data', chunk => chunks.push(chunk));
+        stream.once('end', () => resolve(Buffer.concat(chunks)));
+        stream.once('error', reject);
+    });
+}
+
+function isGifProviderUrl(url) {
+    try {
+        const hostname = new URL(url).hostname;
+        return /(^|\.)giphy\.com$/i.test(hostname)
+            || /(^|\.)tenor\.com$/i.test(hostname)
+            || /(^|\.)tenor\.co$/i.test(hostname);
+    } catch {
+        return false;
+    }
+}
+
+function isGifUrl(url) {
+    if (isGifProviderUrl(url)) return true;
+
+    try {
+        return /\.gif$/i.test(new URL(url).pathname);
+    } catch {
+        return false;
+    }
+}
+
+async function getGifFrameHashes(imageBuffer) {
+    const frameIndexes = gifFrameCount === 1 ? 0 : `0-${gifFrameCount - 1}`;
+    console.info(`[GIF FILTER] Decoding GIF buffer (${imageBuffer.length} bytes), sampling frames ${frameIndexes}.`);
+    const frames = await gifFrames({
+        url: imageBuffer,
+        frames: frameIndexes,
+        outputType: 'png',
+        cumulative: true,
+    });
+
+    const frameHashes = await Promise.all(frames.map(async frame => {
+        const frameBuffer = await streamToBuffer(frame.getImage());
+        return {
+            buffer: frameBuffer,
+            hash: await imghash.hash(frameBuffer, 16, 'hex'),
+        };
+    }));
+    console.info(`[GIF FILTER] Decoded ${frameHashes.length} frame(s) and generated hashes.`);
+    return frameHashes;
+}
+
+async function getNsfwModel() {
+    if (!nsfwModelPromise) {
+        nsfwModelPromise = nsfwjs.load();
+    }
+    return nsfwModelPromise;
+}
+
+async function isGifFrameNsfw(frameBuffer) {
+    const png = PNG.sync.read(frameBuffer);
+    const rgbaTensor = tf.tensor3d(png.data, [png.height, png.width, 4], 'int32');
+    const rgbTensor = rgbaTensor.slice([0, 0, 0], [-1, -1, 3]);
+
+    try {
+        const predictions = await (await getNsfwModel()).classify(rgbTensor);
+        const predictionSummary = predictions
+            .map(prediction => `${prediction.className}=${prediction.probability.toFixed(3)}`)
+            .join(', ');
+        console.info(`[GIF NSFW] ${predictionSummary} | threshold=${gifNsfwThreshold.toFixed(3)}`);
+        return predictions.some(prediction =>
+            ['Porn', 'Hentai', 'Sexy'].includes(prediction.className)
+            && prediction.probability >= gifNsfwThreshold
+        );
+    } finally {
+        rgbaTensor.dispose();
+        rgbTensor.dispose();
+    }
+}
+
+async function storeBlacklistedGifHashes(conn, hashes, userId) {
+    for (const hash of new Set(hashes)) {
+        await conn.query(
+            `INSERT IGNORE INTO gifmedia_blacklist (image_hash) VALUES (?)`,
+            [hash]
+        );
+    }
+    await conn.query(
+        `INSERT IGNORE INTO gifmedia_offenders (discord_user_id) VALUES (?)`,
+        [userId]
+    );
+    gifBlacklistCache.dirty = true;
+}
+
+async function storeBlacklistedGifHashesOnly(conn, hashes) {
+    for (const hash of new Set(hashes)) {
+        await conn.query(
+            `INSERT IGNORE INTO gifmedia_blacklist (image_hash) VALUES (?)`,
+            [hash]
+        );
+    }
+    gifBlacklistCache.dirty = true;
+}
+
+async function storeBlacklistedImageHash(conn, hash, username, userId) {
+    await conn.query(
+        `INSERT IGNORE INTO blacklisted_media (image_hash, added_by_type, spammer_username, spammer_id) VALUES (?, 'AUTOMATED', ?, ?)`,
+        [hash, username, userId]
+    );
+    blacklistCache.dirty = true;
 }
 
 async function sendModIncidentLog(client, user, channel, imageBuffer, fileName, hash, triggerType, notes = '') {
@@ -116,6 +252,50 @@ async function sendModIncidentLog(client, user, channel, imageBuffer, fileName, 
     }
 }
 
+async function getMessageMediaSource(message) {
+    message.attachments.forEach((att, index) => {
+        console.info(`Attachment #${index} RAW DATA -> Name: "${att.name}" | ContentType: "${att.contentType}" | URL: "${att.url ? 'Yes' : 'No'}"`);
+    });
+
+    const imageAttachment = message.attachments.find(att => {
+        const isImgExtension = /\.(jpg|jpeg|png|webp|gif)$/i.test(att.name);
+        const isImgType = att.contentType && att.contentType.startsWith('image/');
+        return isImgExtension || isImgType;
+    });
+    if (imageAttachment) return imageAttachment;
+
+    const giphyUrl = (message.content.match(/https?:\/\/[^\s<>]+/gi) || [])
+        .map(url => url.replace(/[),.]+$/, ''))
+        .find(isGifUrl);
+    if (!giphyUrl) return null;
+
+    console.info(`[GIF FILTER] Fetching GIF provider URL: ${giphyUrl}`);
+    const pageResponse = await axios.get(giphyUrl, { responseType: 'arraybuffer' });
+    const pageContentType = pageResponse.headers['content-type'] || '';
+    if (pageContentType.toLowerCase().includes('image/')) {
+        return { url: giphyUrl, name: 'provider.gif', contentType: pageContentType };
+    }
+
+    const html = Buffer.from(pageResponse.data).toString('utf8');
+    const ogImageMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)/i)
+        || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
+    if (!ogImageMatch) return null;
+
+    const mediaUrl = ogImageMatch[1].replace(/&amp;/g, '&');
+    return { url: mediaUrl, name: 'provider.gif', contentType: 'image/gif' };
+}
+
+function messageContainsGif(message) {
+    const hasGifAttachment = message.attachments.some(att =>
+        /\.gif$/i.test(att.name)
+        || (att.contentType && att.contentType.toLowerCase().includes('gif'))
+    );
+    if (hasGifAttachment) return true;
+
+    return (message.content.match(/https?:\/\/[^\s<>]+/gi) || [])
+        .some(url => isGifUrl(url.replace(/[),.]+$/, '')));
+}
+
 module.exports = {
     name: 'messageCreate',
     async execute(message, client) {
@@ -136,27 +316,56 @@ module.exports = {
         console.info('messageCreate event triggered2');
         if (message.flags.has(MessageFlags.HasSnapshot)) return;
 
-        message.attachments.forEach((att, index) => {
-            console.info(`Attachment #${index} RAW DATA -> Name: "${att.name}" | ContentType: "${att.contentType}" | URL: "${att.url ? 'Yes' : 'No'}"`);
-        });
+        let gifMessageDeleted = false;
+        const containsGif = messageContainsGif(message);
+        console.info(`[GIF FILTER] Message ${message.id} from ${message.author.id}: containsGif=${containsGif}, attachments=${message.attachments.size}.`);
+        if (containsGif) {
+            await message.delete()
+                .then(() => {
+                    gifMessageDeleted = true;
+                    console.info('🧪 GIF message quarantined for validation.');
+                })
+                .catch(error => console.error('❌ Failed to quarantine GIF message:', error));
+        }
 
-        const imageAttachment = message.attachments.find(att => {
-            const isImgExtension = /\.(jpg|jpeg|png|webp)/i.test(att.name);
-            const isImgType = att.contentType && att.contentType.startsWith('image/');
-            // Exclude gifs since imghash is meant for static images
-            const isGif = att.name.endsWith('.gif') || (att.contentType && att.contentType.includes('gif'));
-            
-            return (isImgExtension || isImgType) && !isGif;
-        });
-        console.info(`Found attachment: ${imageAttachment ? imageAttachment.name : 'NONE'}`);
+        const imageAttachment = await getMessageMediaSource(message);
+        console.info(`[GIF FILTER] Media source: ${imageAttachment ? `${imageAttachment.name} (${imageAttachment.contentType || 'unknown type'})` : 'NONE'}.`);
         if (!imageAttachment) return;
 
         let conn;
+        const releaseConnection = () => {
+            if (conn) {
+                conn.release();
+                conn = null;
+            }
+        };
         try {
             console.info('Attempting to download and hash image...');
             const response = await axios.get(imageAttachment.url, { responseType: 'arraybuffer' });
             const imageBuffer = Buffer.from(response.data);
-            const currentImageHash = await imghash.hash(imageBuffer, 16, 'hex');
+            const isGif = imageAttachment.name.toLowerCase().endsWith('.gif')
+                || (imageAttachment.contentType && imageAttachment.contentType.toLowerCase().includes('gif'));
+            console.info(`[GIF FILTER] Classified media as isGif=${isGif}.`);
+            let hashesToCheck;
+            let currentImageHash;
+            let nsfwGifFrameIndexes = [];
+
+            if (isGif) {
+                const gifFramesToCheck = await getGifFrameHashes(imageBuffer);
+                if (gifSfwCheckEnabled) {
+                    for (const [index, frame] of gifFramesToCheck.entries()) {
+                        if (await isGifFrameNsfw(frame.buffer)) {
+                            nsfwGifFrameIndexes.push(index);
+                        }
+                    }
+                }
+                hashesToCheck = gifFramesToCheck.map(frame => frame.hash);
+                currentImageHash = hashesToCheck[0];
+                console.info(`[GIF FILTER] NSFW scan complete: flaggedFrames=${nsfwGifFrameIndexes.length}/${gifFramesToCheck.length}.`);
+            } else {
+                currentImageHash = await imghash.hash(imageBuffer, 16, 'hex');
+                hashesToCheck = [currentImageHash];
+            }
 
             // ==========================================
             // OPTION 1: GLOBAL DATABASE BLOCKLIST CHECK
@@ -165,41 +374,93 @@ module.exports = {
             conn = await pool.getConnection();
             
             console.info('Fetching blacklisted hashes (cached)...');
-            const blacklistedRecords = await getBlacklistedHashes(conn);
+            const blacklistedRecords = isGif
+                ? await getBlacklistedGifHashes(conn)
+                : await getBlacklistedHashes(conn);
 
             console.info(`Blocklist lookup complete. Total blocked items in cache: ${blacklistedRecords.length}`);
             
             let isGloballyBanned = false;
+            let matchedHash = currentImageHash;
             if (blacklistedRecords.length > 0) {
-                for (const record of blacklistedRecords) {
-                    if (!record.image_hash) continue; // Skip malformed rows
-                    const distance = getHammingDistance(currentImageHash, record.image_hash);
-                    if (distance <= hammingThreshold) {
-                        isGloballyBanned = true;
-                        break;
+                for (const imageHash of hashesToCheck) {
+                    for (const record of blacklistedRecords) {
+                        if (!record.image_hash) continue; // Skip malformed rows
+                        const distance = getHammingDistance(imageHash, record.image_hash);
+                        if (distance <= hammingThreshold) {
+                            isGloballyBanned = true;
+                            matchedHash = imageHash;
+                            break;
+                        }
                     }
+                    if (isGloballyBanned) break;
                 }
             }
 
             if (isGloballyBanned) {
-                console.info('🎯 Match found in Global Blocklist! Deleting message...');
+                console.info(`[GIF FILTER] Result=BLOCKED_GLOBAL, matchedHash=${matchedHash}.`);
+                releaseConnection();
                 await sendModIncidentLog(
-                    client, message.author, message.channel, imageBuffer, imageAttachment.name, currentImageHash, 'GLOBAL BLOCKLIST', '🗑️ Auto-deleted matching message entry.'
+                    client, message.author, message.channel, imageBuffer, imageAttachment.name, matchedHash, 'GLOBAL BLOCKLIST', '🗑️ Auto-deleted matching message entry.'
                 );
-                await message.delete().catch(err => console.error("❌ Failed to delete globally banned message:", err));
+                if (!gifMessageDeleted) {
+                    await message.delete().catch(err => console.error("❌ Failed to delete globally banned message:", err));
+                }
                 return; 
             }
-            console.info('✅ Globally banned check complete (No matches found). Proceeding to Speed Trap...');
+
+            if (nsfwGifFrameIndexes.length > 0) {
+                const explicitFrameHashes = nsfwGifFrameIndexes.map(index => hashesToCheck[index]);
+                await storeBlacklistedGifHashes(
+                    conn,
+                    explicitFrameHashes,
+                    message.author.id
+                );
+                releaseConnection();
+                console.info(`[GIF FILTER] Result=BLOCKED_NSFW, flaggedFrames=${explicitFrameHashes.length}; hashes stored.`);
+                await sendModIncidentLog(
+                    client,
+                    message.author,
+                    message.channel,
+                    imageBuffer,
+                    imageAttachment.name,
+                    explicitFrameHashes[0],
+                    'NSFW GIF',
+                    `🗑️ Deleted and stored ${explicitFrameHashes.length} explicit GIF frame hash(es).`
+                );
+                if (!gifMessageDeleted) {
+                    await message.delete().catch(err => console.error("❌ Failed to delete NSFW GIF:", err));
+                }
+                return;
+            }
+
+            console.info(`[GIF FILTER] Result=NO_BLOCKLIST_MATCH, checkedHashes=${hashesToCheck.length}. Proceeding to speed trap.`);
+
+            // GIFs share one per-user speed-trap bucket so changing the GIF does not bypass the limit.
+            if (!currentImageHash) {
+                throw new Error('No hash was generated for the attached image.');
+            }
 
             // ==========================================
             // OPTION 2: MULTI-CHANNEL SPEED TRAP
             // ==========================================
-            const trackingKey = `${message.author.id}_${currentImageHash}`;
+            const trackingKey = isGif
+                ? `${message.author.id}_GIF_SPAM`
+                : `${message.author.id}_${currentImageHash}`;
             const now = Date.now();
 
             let trackingPayload = globalSpeedTrapTracker.get(trackingKey) || { history: [] };
+            if (trackingPayload.blockedUntil > now) {
+                console.info(`[GIF FILTER] Result=BLOCKED_MEDIA_BURST, suppression active for ${message.author.id}.`);
+                releaseConnection();
+                await message.delete().catch(() => {});
+                return;
+            }
+            if (trackingPayload.blockedUntil && trackingPayload.blockedUntil <= now) {
+                trackingPayload = { history: [] };
+            }
             trackingPayload.history = trackingPayload.history.filter(item => (now - item.timestamp) <= timeWindowMs);
-            trackingPayload.history.push({ timestamp: now, messageId: message.id, channelId: message.channel.id });
+            trackingPayload.history.push({ timestamp: now, messageId: message.id, channelId: message.channel.id, repostedMessageId: null });
             globalSpeedTrapTracker.set(trackingKey, trackingPayload);
 
             const uniquelyTargetedChannels = new Set(trackingPayload.history.map(item => item.channelId));
@@ -210,22 +471,25 @@ module.exports = {
                 
                 if (autoBlacklistEnabled) {
                     try {
-                        await conn.query(
-                            `INSERT INTO blacklisted_media (image_hash, added_by_type, spammer_username, spammer_id) VALUES (?, 'AUTOMATED', ?, ?)`,
-                            [currentImageHash, message.author.username, message.author.id]
-                        );
-                        // New hash added — invalidate the in-memory cache so
-                        // the next lookup picks it up immediately.
-                        blacklistCache.dirty = true;
-                    } catch (insertErr) {
-                        // ER_DUP_ENTRY (1062): another concurrent request already
-                        // inserted this exact hash first. That's fine — the hash
-                        // is blacklisted either way, so just continue.
-                        if (insertErr.code !== 'ER_DUP_ENTRY' && insertErr.errno !== 1062) {
-                            throw insertErr;
+                        if (isGif) {
+                            await storeBlacklistedGifHashesOnly(
+                                conn,
+                                [currentImageHash]
+                            );
+                        } else {
+                            await storeBlacklistedImageHash(
+                                conn,
+                                currentImageHash,
+                                message.author.username,
+                                message.author.id
+                            );
                         }
+                    } catch (insertErr) {
+                        throw insertErr;
                     }
                 }
+
+                releaseConnection();
 
                 const penaltyStatusText = timeoutEnabled 
                     ? `🤐 Issued timeout penalty for **${daysConfigured} day(s)**.` 
@@ -244,6 +508,9 @@ module.exports = {
                         channelGroups[entry.channelId] = [];
                     }
                     channelGroups[entry.channelId].push(entry.messageId);
+                    if (entry.repostedMessageId) {
+                        channelGroups[entry.channelId].push(entry.repostedMessageId);
+                    }
                 }
 
                 // Execute absolute mass wipe across all channels simultaneously
@@ -265,7 +532,8 @@ module.exports = {
                     }
                 }
 
-                globalSpeedTrapTracker.delete(trackingKey);
+                trackingPayload.blockedUntil = now + timeWindowMs;
+                globalSpeedTrapTracker.set(trackingKey, trackingPayload);
 
                 // TIMEOUT CONDITIONALLY
                 if (timeoutEnabled) {
@@ -291,8 +559,29 @@ module.exports = {
                 }
             }, timeWindowMs + 1000);
 
+            releaseConnection();
+
+            if (isGif && gifMessageDeleted) {
+                const activeRecord = globalSpeedTrapTracker.get(trackingKey);
+                if (activeRecord?.blockedUntil > Date.now()) {
+                    console.info(`[GIF FILTER] Result=BLOCKED_MEDIA_BURST, skipping approved repost for ${message.author.id}.`);
+                    return;
+                }
+                const repostedMessage = await message.channel.send({
+                    content: `**${message.author.tag}** shared a GIF:`,
+                    files: [{ attachment: imageBuffer, name: imageAttachment.name || 'approved.gif' }]
+                });
+                const currentRecord = globalSpeedTrapTracker.get(trackingKey);
+                const currentEntry = currentRecord?.history.find(entry => entry.messageId === message.id);
+                if (currentEntry) {
+                    currentEntry.repostedMessageId = repostedMessage.id;
+                    globalSpeedTrapTracker.set(trackingKey, currentRecord);
+                }
+                console.info(`[GIF FILTER] Result=APPROVED, reposted GIF for ${message.author.id}.`);
+            }
+
         } catch (error) {
-            console.error('Error running cross-channel image protection logic:', error);
+            console.error(`[GIF FILTER] Result=ERROR for message ${message.id}:`, error);
         } finally {
             if (conn) conn.release(); 
         }

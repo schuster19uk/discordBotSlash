@@ -16,19 +16,24 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
+    "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
     "@discordjs/builders": "^1.14.1",
     "@discordjs/rest": "^2.6.1",
+    "@tensorflow/tfjs": "^4.22.0",
     "archiver": "^8.0.0",
     "axios": "^1.18.1",
     "discord-api-types": "^0.38.50",
     "discord.js": "^14.26.3",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "gif-frames": "^1.0.1",
     "imghash": "^1.1.4",
     "luxon": "^3.7.2",
-    "mariadb": "^3.5.2"
+    "mariadb": "^3.5.2",
+    "nsfwjs": "^4.4.0",
+    "pngjs": "^7.0.0"
   }
 }

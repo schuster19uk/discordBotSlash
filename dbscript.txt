@@ -72,6 +72,25 @@ ALTER TABLE blacklisted_media
 -- succeeding (the old check-then-insert pattern in code had a race window).
 ALTER TABLE blacklisted_media
     ADD UNIQUE KEY unique_image_hash (image_hash);
+
+-- GIF-specific blocklist. Each sampled GIF frame is stored as its own hash.
+CREATE TABLE IF NOT EXISTS gifmedia_blacklist (
+    gif_media_id INT AUTO_INCREMENT PRIMARY KEY,
+    image_hash VARCHAR(64) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX(image_hash),
+    UNIQUE KEY unique_gif_image_hash (image_hash)
+);
+
+-- Users who posted GIFs with explicit frames. Kept separate from the hash
+-- table so one user is not repeated for every frame hash.
+CREATE TABLE IF NOT EXISTS gifmedia_offenders (
+    offender_id INT AUTO_INCREMENT PRIMARY KEY,
+    discord_user_id VARCHAR(64) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_gifmedia_offender (discord_user_id)
+);
+
  
 -- ---------------------------------------------------------------------
 -- OPTIONAL: if you want to preserve old 8x8-hash entries rather than
